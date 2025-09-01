@@ -5,6 +5,12 @@
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
+    "[dart]": {
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": true,
+    },
     "[json]": {
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "vscode.json-language-features"
@@ -17,33 +23,16 @@
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "monosans.djlint"
     },
-    "auto-close-tag.activationOnLanguage": [
-        "markdown",
-        "django-html"
-    ],
-    "auto-rename-tag.activationOnLanguage": [
-        "markdown",
-        "django-html",
-    ],
     "emmet.includeLanguages": {
         "django-html": "html",
     },
-    "tailwind-fold.supportedLanguages": [
-        "html",
-        "django-html"
-    ],
-    "tailwind-fold.unfoldedTextOpacity": 1,
-    "tailwind-fold.foldedText": " class = ...",
-    "tailwind-fold.foldedTextColor": "#6699cc",
-    "tailwind-fold.unfoldIfLineSelected": true,
-    "tailwind-fold.showTailwindImage": true,
+    "files.associations": {
+        "*.css": "tailwindcss"
+    },
     "djlint.formatJs": true,
     "djlint.formatCss": true,
     "djlint.maxAttributeLength": 10,
     "djlint.maxLineLength": 20,
-    "editor.suggest.showWords": false,
-    "editor.occurrencesHighlight": "off",
-    "editor.hover.enabled": false,
     "files.exclude": {
         "**/.vscode-remote-containers": true,
         "**/.vscode-server/bin": true,
@@ -66,7 +55,6 @@
         "**/linux": true,
         "**/macos": true,
         "**/windows": true,
-        "**/web": true,
         "**/.idea": true,
         "**/pubspec.lock": true,
         "**/firepit-log.txt": true,

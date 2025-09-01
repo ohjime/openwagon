@@ -4,16 +4,75 @@ publish_to: 'none'
 version: 0.1.0
 
 environment:
-  sdk: ^3.8.1
+  sdk: ^3.8.0
 
 dependencies:
   flutter:
     sdk: flutter
+  intl: ^0.20.2
+  uuid: ^4.5.1
+  collection: ^1.19.1
+  firebase_auth: ^5.5.4
+  firebase_core: ^3.13.1
+  firebase_storage: ^12.4.6
+  google_sign_in: ^6.3.0
+  cloud_firestore: ^5.6.8
+  firebase_messaging: ^15.1.6
+  path_provider: ^2.1.5
+  animations: ^2.0.11
+  animated_text_kit: ^4.2.3
+  bloc: ^9.0.0
+  flutter_bloc: ^9.1.1
+  equatable: ^2.0.7
+  flow_builder: ^0.1.0
+  flutter_form_builder: ^10.0.1
+  form_builder_validators: ^11.1.2
+  form_builder_image_picker: ^4.3.1
+  form_builder_extra_fields:
+  flutter_zoom_drawer: ^3.2.0
+  shimmer: ^3.0.0
+  awesome_dialog: ^3.2.1
+  pushable_button: ^0.0.4
+  font_awesome_flutter: ^10.8.0
+  delayed_display: ^2.0.0
+  image_picker: ^1.1.2
+  percent_indicator: ^4.2.5
+  rive: ^0.13.2
+  speech_balloon: ^0.0.4
+  random_avatar: ^0.0.8
+  toastification: ^1.2.0
+  avatar_glow: ^3.0.1
+  chiclet: ^1.2.0
+  loading_indicator: ^3.1.1
+  easy_date_timeline: ^2.0.9
+  get: ^4.7.2
+  cached_network_image: ^3.4.1
+  flutter_staggered_animations: ^1.1.1
+  dio: ^5.7.0
+  change_case: ^2.2.0
+  flip_card_swiper: ^1.0.0
+  stacked_card_carousel: ^0.0.4
+  grouped_list: ^6.0.0
+  pretty_json: ^2.0.0
+  connectivity_plus: ^6.1.4
+  record: ^6.0.0
+  file_picker: ^10.1.9
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  fake_cloud_firestore: ^3.1.0
+  firebase_storage_mocks: ^0.7.0
+  firebase_auth_mocks: ^0.14.1
+  google_sign_in_mocks: ^0.3.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.9
 
 flutter:
   uses-material-design: true
+  assets:
+      - assets/images/shared/
+      - assets/images/onboarding/
+      - assets/animations/onboarding/
+      - assets/data/shared/universities.json

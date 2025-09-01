@@ -1,0 +1,334 @@
+---
+sidebar_label: Trip List
+sidebar_position: 1
+---
+
+# Trip List
+
+The Trip List feature lets an authenticated Driver view all trips assigned to them. It presents a filterable list (by status) and fetches data from the server using the current Firebase user’s ID token.
+
+- Purpose: give drivers a quick overview of their assigned trips (origin → destination, date/time, status). A full design rationale and UX details live in the Design section.
+
+```mermaid
+flowchart LR
+    U[(Driver)] --> UC[[View My Assigned Trips]]
+    U --> F[[Filter by Status]]
+    UC --> R[(Server API)]
+    R --> UC
+```
+
+---
+
+## Overview
+
+High-level flow: DB → Schema → Data → Domain → Presentation.
+
+```mermaid
+sequenceDiagram
+    participant DB as DB (Trip, Driver, Rider, Place)
+    participant API as Ninja API (Schema)
+    participant Repo as Mobile TripRepository
+    participant Bloc as TripListBloc
+    participant UI as TripListPage/View
+
+    UI->>Bloc: TripListSubscriptionRequested
+    Bloc->>Repo: getAssignedTrips()
+    Repo->>API: GET /api/trips/driver/assigned (Bearer <Firebase ID Token>)
+    API->>API: Verify token → uid
+    API->>DB: Find Account(uid) → Driver → Trips
+    DB-->>API: Queryset of Trips
+    API-->>Repo: List[TripDriverAssignedSchema]
+    Repo-->>Bloc: List<Trip>
+    Bloc-->>UI: state = success(trips)
+    UI->>UI: Render ListView (filters apply client-side)
+```
+
+---
+
+## Main Entities
+
+### DB models
+
+Trips are stored in Postgres via Django ORM. Key entities: `Trip`, `Place`, `Driver`, `Rider`.
+
+Full source:
+- Trip/Place: https://github.com/ohjime/wagon/blob/main/src/server/lib/trip/models.py
+- Driver/Rider/Account: https://github.com/ohjime/wagon/blob/main/src/server/lib/core/models.py
+
+```mermaid
+classDiagram
+    class Account {
+        +uid: str
+        +first_name: str
+        +last_name: str
+        +email: str
+        +phone: str?
+        +avatar: str
+    }
+    class Driver {
+        +account: OneToOne[Account]
+    }
+    class Rider {
+        +account: OneToOne[Account]
+    }
+    class Place {
+        +id: str (place_id)
+        +address: str
+        +coordinate: Point?
+    }
+    class Trip {
+        +id: int (pk)
+        +hashid: str
+        +driver: FK[Driver]
+        +rider: FK[Rider]
+        +date: datetime?
+        +origin: FK[Place]
+        +destination: FK[Place]
+        +status: enum
+        +customer_notes: str
+        +driver_notes: str
+        +dispatcher_notes: str
+    }
+
+    Driver --> Account
+    Rider --> Account
+    Trip --> Driver
+    Trip --> Rider
+    Trip --> Place : origin
+    Trip --> Place : destination
+```
+
+### DB schema
+
+The API exposes a curated schema to mobile: `TripDriverAssignedSchema`. It includes essential Trip fields plus denormalized origin/destination address strings for easy rendering.
+
+Full source: https://github.com/ohjime/wagon/blob/main/src/server/lib/trip/api.py
+
+```mermaid
+classDiagram
+    class TripDriverAssignedSchema {
+        +id: int
+        +hashid: str
+        +driver_id: int
+        +rider_id: int
+        +date: datetime?
+        +origin_id: str
+        +origin_address: str
+        +destination_id: str
+        +destination_address: str
+        +status: str
+        +customer_notes: str
+        +driver_notes: str
+        +dispatcher_notes: str
+    }
+```
+
+Endpoint:
+- `GET /api/trips/driver/assigned`
+- Auth: `Authorization: Bearer <Firebase ID Token>`
+- Router registration: https://github.com/ohjime/wagon/blob/main/src/server/lib/app/api.py
+
+### Frontend models
+
+The mobile frontend defines `Trip` matching the response schema and provides `fromJson`/`toJson` helpers.
+
+Full source: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/core/models/trip.dart
+
+```mermaid
+classDiagram
+    class Trip {
+      +id: int
+      +hashid: String
+      +driverId: int
+      +riderId: int
+      +date: DateTime?
+      +originId: String
+      +originAddress: String
+      +destinationId: String
+      +destinationAddress: String
+      +status: String
+      +customerNotes: String
+      +driverNotes: String
+      +dispatcherNotes: String
+
+      +fromJson(Map)
+      +toJson() Map
+    }
+```
+
+Key mapping notes:
+- `date` is ISO8601 in JSON; parsed to `DateTime?` in Dart.
+- `origin_address`/`destination_address` provided for direct rendering.
+
+---
+
+## Domain layer
+
+The `TripRepository` is the mobile domain abstraction around remote data. It fetches the current Firebase user, gets an ID token, and calls the server endpoint.
+
+Full source: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/core/repositories/trip_repository.dart
+
+```dart title="TripRepository.getAssignedTrips()"
+final resp = await _dio.get(
+  '$_apiBaseUrl$_assignedTripsEndpoint',
+  options: Options(headers: {'Authorization': 'Bearer $idToken'}),
+);
+if (resp.statusCode == 200 && resp.data is List) {
+  return (resp.data as List)
+      .whereType<Map<String, dynamic>>()
+      .map((json) => Trip.fromJson(json))
+      .toList();
+}
+```
+
+Dependency injection is done at app start so the repository is available to feature blocs:
+
+Full source: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/main.dart
+
+```dart title="main.dart excerpt"
+return MultiRepositoryProvider(
+  providers: [
+    RepositoryProvider.value(value: _authenticationRepository),
+    RepositoryProvider<TripRepository>(create: (_) => TripRepository()),
+  ],
+  child: AppView(onGenerateRoute: _onGenerateRoute),
+);
+```
+
+Server-side fetch logic (authorization, lookup, and query):
+
+Full source: https://github.com/ohjime/wagon/blob/main/src/server/lib/trip/api.py
+
+```python title="/api/trips/driver/assigned (simplified)"
+decoded = auth.verify_id_token(token)
+uid = decoded.get("uid")
+account = Account.objects.get(uid=uid)
+driver = Driver.objects.get(account=account)
+trips = Trip.objects.select_related("origin", "destination").filter(driver=driver)
+return [TripDriverAssignedSchema(... from t ... ) for t in trips]
+```
+
+---
+
+## Presentation layer
+
+The Trip List feature uses Bloc for state management:
+
+- Bloc: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/bloc/trip_list_bloc.dart
+- Events: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/bloc/trip_list_event.dart
+- State: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/bloc/trip_list_state.dart
+- Page/View: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/view/trip_list_page.dart
+- Widgets: 
+  - Item: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/widgets/trip_list_item.dart
+  - Filters: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/widgets/trip_filters.dart
+
+Component structure:
+
+```mermaid
+flowchart TB
+    subgraph Presentation
+      P[TripListPage]
+      V[TripListView]
+      F[TripFiltersButton]
+      L[ListView]
+      I[TripListItem]
+    end
+    subgraph Business
+      B[TripListBloc]
+    end
+    subgraph Domain
+      R[TripRepository]
+    end
+    subgraph Data
+      H[Dio/HTTP]
+      S[/Ninja API/]
+    end
+
+    P --> V
+    V --> B
+    V --> F
+    V --> L
+    L --> I
+    B --> R
+    R --> H --> S
+```
+
+Bloc responsibilities:
+- `TripListSubscriptionRequested`: load assigned trips; emit `loading → success/failure`.
+- `TripListFilterChanged`: update in-memory status filter.
+- `TripListRefreshed`: re-fetch list, preserving filter selection.
+
+```dart title="TripListBloc handlers (excerpt)"
+on<TripListSubscriptionRequested>(_onSubscriptionRequested);
+on<TripListFilterChanged>(_onFilterChanged);
+on<TripListRefreshed>(_onRefreshed);
+
+Future<void> _onSubscriptionRequested(... emit) async {
+  emit(state.copyWith(status: TripListStatus.loading));
+  try {
+    final trips = await _tripRepository.getAssignedTrips();
+    emit(state.copyWith(status: TripListStatus.success, trips: trips));
+  } catch (_) {
+    emit(state.copyWith(status: TripListStatus.failure));
+  }
+}
+```
+
+UI rendering follows the state:
+
+```dart title="TripListView builder (simplified)"
+switch (state.status) {
+  case TripListStatus.loading:
+    return const Center(child: CupertinoActivityIndicator());
+  case TripListStatus.failure:
+    return const Center(child: Text('Failed to load trips'));
+  case TripListStatus.success:
+    final trips = state.filteredTrips.toList();
+    return ListView.builder(
+      itemCount: trips.length,
+      itemBuilder: (_, i) => TripListItem(trip: trips[i]),
+    );
+  default:
+    return const SizedBox.shrink();
+}
+```
+
+Filters are purely client-side and map directly to backend statuses:
+
+```dart title="TripViewFilter mapping"
+switch (filter) {
+  case TripViewFilter.enRoute: return trip.status == 'en_route';
+  case TripViewFilter.inProgress: return trip.status == 'in_progress';
+  // ...others are 1:1 with backend strings
+}
+```
+
+Sequence between domain and presentation:
+
+```mermaid
+sequenceDiagram
+    participant UI as TripListPage/View
+    participant Bloc as TripListBloc
+    participant Repo as TripRepository
+
+    UI->>Bloc: add(TripListSubscriptionRequested)
+    Bloc->>Repo: getAssignedTrips()
+    Repo-->>Bloc: List<Trip>
+    Bloc-->>UI: state = success(trips)
+    UI->>Bloc: add(TripListFilterChanged(status))
+    Bloc-->>UI: state = success(trips, filter)
+```
+
+---
+
+## Quick links
+
+- Backend models: https://github.com/ohjime/wagon/blob/main/src/server/lib/trip/models.py
+- Backend schema + route: https://github.com/ohjime/wagon/blob/main/src/server/lib/trip/api.py
+- API wiring: https://github.com/ohjime/wagon/blob/main/src/server/lib/app/api.py
+- Mobile Trip model: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/core/models/trip.dart
+- Mobile Trip repository: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/core/repositories/trip_repository.dart
+- Trip list bloc: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/bloc/trip_list_bloc.dart
+- Trip list view: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/view/trip_list_page.dart
+- Trip list widgets: https://github.com/ohjime/wagon/blob/main/src/mobile/lib/trip/list/widgets
+

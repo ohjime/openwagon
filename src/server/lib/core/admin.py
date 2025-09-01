@@ -5,7 +5,7 @@ from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import FieldTextFilter
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
-from core.models import User, Account, Driver, Rider, Trip, Place
+from core.models import User, Account, Driver, Rider
 
 
 @admin.register(User)
@@ -30,14 +30,4 @@ class DriverAdmin(ModelAdmin):
 
 @admin.register(Rider)
 class RiderAdmin(ModelAdmin):
-    pass
-
-
-@admin.register(Trip)
-class TripAdmin(ModelAdmin):
-    pass
-
-
-@admin.register(Place)
-class PlaceAdmin(ModelAdmin):
     pass

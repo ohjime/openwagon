@@ -128,27 +128,27 @@ superuser:
 		&& uv run lib/main.py createsuperuser
 
 db:
-	@echo "\nSetting up Database from src/server/.env ...\n"
-	@dotenv -f src/server/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@echo "\nSetting up Database from src/server/env/.env ...\n"
+	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"CREATE USER $$DB_USER WITH PASSWORD '\''$$DB_PASSWORD'\'';" || \
 		echo "Skipping User Creation..." && \
 		psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER USER $$DB_USER WITH PASSWORD '\''$$DB_PASSWORD'\'';"'
-	@dotenv -f src/server/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER USER $$DB_USER WITH SUPERUSER;"'
-	@dotenv -f src/server/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"CREATE DATABASE $$DB_NAME OWNER $$DB_USER;" || \
 		echo "Skipping Database Creation..." && \
 		psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER USER $$DB_USER WITH PASSWORD '\''$$DB_PASSWORD'\'';"'
-	@dotenv -f src/server/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER DATABASE $$DB_NAME OWNER TO $$DB_USER;"'
 	@echo "\nDatabase setup complete.\n"
 
 data:
 	@echo "Generating mock server data...\n"
 	@cd src/server \
-		&& WAGON_SKIP_GOOGLE=1 printf "from core.fake import generate\ngenerate(10)\n" | uv run lib/main.py shell
+		&& WAGON_SKIP_GOOGLE=1 printf "from trip.fake import TripFactory\nTripFactory.bulk(10)\n" | uv run lib/main.py shell
 
 clean:
 	@echo "${RED}Cleaning Server${NC}..."

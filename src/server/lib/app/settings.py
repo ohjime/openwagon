@@ -7,8 +7,9 @@ os.environ["DJANGO_RUNSERVER_HIDE_WARNING"] = "true"
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = "django-insecure-u8#1l$95&vq3w2(ei^=ng+4tdid@by!s+&u&jlizx&xr&w&(gk"
 DEBUG = True
-load_dotenv(BASE_DIR / ".env")
-ALLOWED_HOSTS = str(os.getenv("ALLOWED_HOSTS", default=["*"])).split(",")
+load_dotenv(BASE_DIR / "env/.env")
+if DEBUG:
+    ALLOWED_HOSTS = str(os.getenv("DEV_HOSTS", default=["*"])).split(",")
 INSTALLED_APPS = [
     "unfold",
     "unfold.contrib.filters",
@@ -24,7 +25,6 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
-    "django_browser_reload",
     "django.contrib.staticfiles",
     "django.contrib.gis",
     "django_vite",
@@ -33,7 +33,8 @@ INSTALLED_APPS = [
     "django_cotton",
     "widget_tweaks",
     "core",
-    "dashboard",
+    "trip",
+    "dispatch",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -107,7 +108,7 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
-STATIC_ROOT = BASE_DIR / "assets"
+STATIC_ROOT = BASE_DIR / "static"
 STATIC_URL = "static/"
 STATICFILES_DIRS = [
     BASE_DIR / "vite/static",

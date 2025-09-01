@@ -1,14 +1,10 @@
 from django.urls import include, path
 from django.contrib import admin
-from django.conf import settings
+from app.api import api
 
 
 urlpatterns = [
     path("admin/", admin.site.urls, name="admin"),
-    path("dispatch/", include("core.urls")),
+    path("dispatch/", include("dispatch.urls")),
+    path("api/", api.urls, name="api"),
 ]
-
-if settings.DEBUG:
-    urlpatterns += [
-        path("__reload__/", include("django_browser_reload.urls")),
-    ]

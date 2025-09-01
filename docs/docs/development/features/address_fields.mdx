@@ -22,7 +22,7 @@ Key points:
 
 ## Where it lives
 
-- Cotton component template: `src/server/lib/dashboard/templates/cotton/address_route.html`
+- Cotton component template: `src/server/lib/dispatch/templates/cotton/address_route.html`
 - Included in Trip details partial: `src/server/lib/core/templates/core/trips/partials/details.html`
 
 You can embed it anywhere via the Cotton tag:
@@ -31,7 +31,7 @@ You can embed it anywhere via the Cotton tag:
 <c-address-route api-key="{{ GOOGLE_MAPS_API_KEY }}" />
 ```
 
-Cotton resolves `<c-address-route />` to `dashboard/templates/cotton/address_route.html`. The optional `api-key` attribute lets you pass a Google Maps API key from Django.
+Cotton resolves `<c-address-route />` to `dispatch/templates/cotton/address_route.html`. The optional `api-key` attribute lets you pass a Google Maps API key from Django.
 
 ---
 
