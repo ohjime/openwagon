@@ -14,28 +14,52 @@ ifeq ($(for),macos)
 	@echo '/usr/local/bin added to PATH'
 	@printf "\033[1;4;34m\n3. Installing npm...\n\033[0m\n"
 	@brew install npm || true
-	@npm update || true
-	@printf "\033[1;4;34m\n4. Installing uv...\n\033[0m\n"
+	@printf "\033[1;4;34m\n4. Updating npm globally...\n\033[0m"
+	@npm install -g npm@latest || true
+	@printf "\033[1;4;34m\n5. Installing dotenv-cli globally with npm...\n\033[0m"
+	@npm install -g dotenv-cli || true
+	@printf "\033[1;4;34m\n6. Installing uv...\n\033[0m\n"
 	@brew install uv || true
-	@printf "\033[1;4;34m\n5. Installing PostgreSQL...\n\033[0m\n"
+	@printf "\033[1;4;34m\n7. Installing PostgreSQL...\n\033[0m\n"
 	@brew install postgresql || true
-	@printf "\033[1;4;34m\n6. Starting PostgreSQL service...\n\033[0m\n"
+	@printf "\033[1;4;34m\n8. Starting PostgreSQL service...\n\033[0m\n"
 	@brew services restart postgresql || true
-	@printf "\033[1;4;34m\n7. Installing PostGIS...\n\033[0m\n"
+	@printf "\033[1;4;34m\n9. Installing PostGIS...\n\033[0m\n"
 	@brew install postgis || true
-	@printf "\033[1;4;34m\n8. Installing GDAL, PROJ, and GEOS...\n\033[0m\n"
+	@printf "\033[1;4;34m\n10. Installing GDAL, PROJ, and GEOS...\n\033[0m\n"
 	@brew install gdal proj geos || true
-	@printf "\033[1;4;34m\n8. Initializing Xcode...\n\033[0m\n"
+	@printf "\033[1;4;34m\n11. Initializing Xcode...\n\033[0m\n"
 	@sudo sh -c 'xcode-select -s /Applications/Xcode.app/Contents/Developer && xcodebuild -runFirstLaunch' || true
 	@echo "Xcode Initialized"
-	@printf "\033[1;4;34m\n8. Installing Xcode CLI Tools...\n\033[0m\n"
+	@printf "\033[1;4;34m\n12. Installing Xcode CLI Tools...\n\033[0m\n"
 	@xcode-select --install || true
-	@printf "\033[1;4;34m\n8. Accepting Xcode Agreements...\n\033[0m\n"
+	@printf "\033[1;4;34m\n13. Accepting Xcode Agreements...\n\033[0m\n"
 	@sudo xcodebuild -license accept || true
 	@echo "Xcode Agreements have been Accepted"
-	@printf "\033[1;4;34m\n9. Installing Firebase CLI...\n\033[0m"
+	@printf "\033[1;4;34m\n14. Installing Firebase CLI...\n\033[0m"
 	@npm install -g firebase-tools --loglevel=error || true
+	@printf "\033[1;4;34m\n15. Logging into Firebase...\n\033[0m\n"
+	@firebase login || true
+	
+	@printf "\033[1;4;34m\n16. Installing Flutter SDK to $HOME/flutter and updating PATH...\n\033[0m\n"
+	@FLUTTER_DIR="$$HOME/flutter"; \
+	if [ -d "$$FLUTTER_DIR/.git" ]; then \
+	  echo "Flutter already installed at $$FLUTTER_DIR"; \
+	else \
+	  echo "Setting up Flutter in $$FLUTTER_DIR..."; \
+	  rm -rf "$$FLUTTER_DIR"; \
+	  git clone https://github.com/flutter/flutter.git -b stable "$$FLUTTER_DIR" || true; \
+	fi
+	@ZSHRC="$$HOME/.zshrc"; \
+	LINE='export PATH="$$HOME/flutter/bin:$$PATH"'; \
+	grep -qxF "$$LINE" "$$ZSHRC" 2>/dev/null || echo "$$LINE" >> "$$ZSHRC"; \
+	echo "Ensured Flutter is on PATH in $$ZSHRC"; \
+	/bin/zsh -lc 'flutter --version || $$HOME/flutter/bin/flutter --version' || true
+
+	@printf "\033[1;4;34m\n17. Installing Flutter VSCode Extensions...\n\033[0m\n"
+	@code --install-extension Dart-Code.flutter || true
 	@printf "\033[1;4;34m\nMacOS Development Environment Setup Complete\n\033[0m\n"
+
 else
 	@printf "\033[1;4;34m\n'${for}' is not a recognized platform\n\033[0m\n"
 	@printf "\033[1;4;34mSupported platforms are:\n1. macos\n2. linux\n3. windows\033[0m\n"
@@ -129,19 +153,19 @@ superuser:
 
 db:
 	@echo "\nSetting up Database from src/server/env/.env ...\n"
-	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@npx -y -p dotenv-cli dotenv -e src/server/env/.env -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"CREATE USER $$DB_USER WITH PASSWORD '\''$$DB_PASSWORD'\'';" || \
 		echo "Skipping User Creation..." && \
 		psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER USER $$DB_USER WITH PASSWORD '\''$$DB_PASSWORD'\'';"'
-	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@npx -y -p dotenv-cli dotenv -e src/server/env/.env -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER USER $$DB_USER WITH SUPERUSER;"'
-	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@npx -y -p dotenv-cli dotenv -e src/server/env/.env -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"CREATE DATABASE $$DB_NAME OWNER $$DB_USER;" || \
 		echo "Skipping Database Creation..." && \
 		psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER USER $$DB_USER WITH PASSWORD '\''$$DB_PASSWORD'\'';"'
-	@dotenv -f src/server/env/.env run -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
+	@npx -y -p dotenv-cli dotenv -e src/server/env/.env -- sh -c 'psql -h localhost -p 5432 -U $$USER -d postgres -c \
 		"ALTER DATABASE $$DB_NAME OWNER TO $$DB_USER;"'
 	@echo "\nDatabase setup complete.\n"
 
