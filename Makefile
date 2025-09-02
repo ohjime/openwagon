@@ -98,25 +98,28 @@ ifeq ($(for),ios)
 	@printf "\033[1;4;34m\n1. Cleaning Previous Builds...\033[0m\n\n"
 	@cd src/mobile/ios \
 		&& flutter clean
-	@printf "\033[1;4;34m\n2. Fetching Flutter and Dart Packages...\033[0m\n\n"
+	@printf "\033[1;4;34m\n2. Building Flutter Cache for iOS...\033[0m\n\n"
+	@cd src/mobile/ \
+		&& flutter precache --ios
+	@printf "\033[1;4;34m\n3. Fetching Flutter and Dart Packages...\033[0m\n\n"
 	@cd src/mobile/ \
 		&& flutter pub get \
 		&& dart pub get
-	@printf "\033[1;4;34m\n3. Configuring Flutter for iOS...\033[0m\n\n"
+	@printf "\033[1;4;34m\n4. Configuring Flutter for iOS...\033[0m\n\n"
 	@cd src/mobile/ \
 		&& flutter config --no-enable-android \
 		&& flutter config --enable-ios
-	@printf "\033[1;4;34m\n4. Updating CocoaPods repo and installing pods...\033[0m\n\n"
+	@printf "\033[1;4;34m\n5. Updating CocoaPods repo and installing pods...\033[0m\n\n"
 	@cd src/mobile/ios \
 		&& pod repo update \
 		&& pod install
-	@printf "\033[1;4;34m\n5. Activating FlutterFire...\033[0m\n\n"
+	@printf "\033[1;4;34m\n6. Activating FlutterFire...\033[0m\n\n"
 	@cd src/mobile/ \
 		&& dart pub global activate flutterfire_cli
-	@printf "\033[1;4;34m\n6. Starting FlutterFire Configuration Setup...\033[0m\n\n"
+	@printf "\033[1;4;34m\n7. Starting FlutterFire Configuration Setup...\033[0m\n\n"
 	@cd src/mobile/ \
 		&& flutterfire configure
-	@printf "\033[1;4;34m\n7. Building Mobile for iOS (Grab a Coffee this will take a while)...\033[0m\n\n"
+	@printf "\033[1;4;34m\n8. Building Mobile for iOS (Grab a Coffee this will take a while)...\033[0m\n\n"
 	@cd src/mobile/ \
 		&& flutter run
 else
