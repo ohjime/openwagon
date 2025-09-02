@@ -51,7 +51,9 @@ ifeq ($(for),macos)
 	@ZSHRC="$$HOME/.zshrc"; \
 	LINE='export PATH="$$HOME/flutter/bin:$$PATH"'; \
 	grep -qxF "$$LINE" "$$ZSHRC" 2>/dev/null || echo "$$LINE" >> "$$ZSHRC"; \
-	echo "Ensured Flutter is on PATH in $$ZSHRC"; \
+	LINE2='export PATH="$$PATH":"$$HOME/.pub-cache/bin"'; \
+	grep -qxF "$$LINE2" "$$ZSHRC" 2>/dev/null || echo "$$LINE2" >> "$$ZSHRC"; \
+	echo "Ensured Flutter and Dart Pub are on PATH in $$ZSHRC"; \
 	/bin/zsh -lc 'flutter --version || $$HOME/flutter/bin/flutter --version' || true
 	@printf "\033[1;4;34m\n21. Installing Workplace VSCode Extensions...\n\033[0m\n"
 	@code --install-extension Dart-Code.flutter || true
