@@ -25,13 +25,8 @@ ifeq ($(for),macos)
 	@brew install postgis || true
 	@printf "\033[1;4;34m\n11. Installing GDAL, PROJ, and GEOS via Homebrew...\n\033[0m\n"
 	@brew install gdal proj geos || true
-	@printf "\033[1;4;34m\n12. Installing Ruby via Homebrew...\n\033[0m\n"
-	@brew install ruby || true
-	@printf "\033[1;4;34m\n13. Adding brew installed Ruby to front of PATH...\n\033[0m\n"
-	@echo 'export PATH="/opt/homebrew/opt/ruby/bin:$$PATH"' >> ~/.zshrc 
-	@echo '/opt/homebrew/opt/ruby/bin added to PATH'
-	@printf "\033[1;4;34m\n14. Installing cocoapods via brew installed Ruby...\n\033[0m\n"
-	@/opt/homebrew/opt/ruby/bin/gem install cocoapods || true
+	@printf "\033[1;4;34m\n12. Installing CocoaPods via Homebrew...\n\033[0m\n"
+	@brew install cocoapods || true
 	@printf "\033[1;4;34m\n15. Initializing Xcode...\n\033[0m\n"
 	@sudo sh -c 'xcode-select -s /Applications/Xcode.app/Contents/Developer && xcodebuild -runFirstLaunch' || true
 	@echo "Xcode Initialized"
