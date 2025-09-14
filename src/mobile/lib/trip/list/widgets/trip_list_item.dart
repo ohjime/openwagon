@@ -1,5 +1,7 @@
 import 'package:app/core/models/trip.dart';
+import 'package:app/trip/detail/view/trip_detail_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 class TripListItem extends StatelessWidget {
@@ -20,14 +22,15 @@ class TripListItem extends StatelessWidget {
 
     return ListTile(
       key: Key('tripListItem_${trip.id}_${trip.hashid}'),
-      title: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(subtitle),
       leading: const Icon(Icons.directions_car_rounded),
       dense: false,
+      onTap: () {},
+      onLongPress: () {
+        HapticFeedback.heavyImpact();
+        Navigator.of(context).push(TripDetailPage.route(trip: trip));
+      },
     );
   }
 }

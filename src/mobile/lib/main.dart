@@ -1,12 +1,12 @@
-import 'package:app/home/home.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
+
 import 'package:app/firebase_options.dart';
 import 'package:app/core/core.dart';
-import 'package:app/core/repositories/trip_repository.dart';
 import 'package:app/app/app.dart';
+import 'package:app/home/home.dart';
 import 'package:app/login/login.dart';
 import 'package:app/signup/signup.dart';
 
@@ -70,9 +70,7 @@ class App extends StatelessWidget {
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider.value(value: _authenticationRepository),
-        RepositoryProvider<TripRepository>(
-          create: (_) => TripRepository(),
-        ),
+        RepositoryProvider<TripRepository>(create: (_) => TripRepository()),
       ],
       child: AppView(onGenerateRoute: _onGenerateRoute),
     );

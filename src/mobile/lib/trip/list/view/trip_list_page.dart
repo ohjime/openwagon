@@ -1,7 +1,7 @@
 import 'package:app/core/models/trip.dart' as model;
 import 'package:app/core/repositories/trip_repository.dart';
 import 'package:app/trip/list/bloc/trip_list_bloc.dart';
-import 'package:app/trip/list/widgets/trip_filters.dart';
+import 'package:app/trip/list/widgets/trip_list_filters.dart';
 import 'package:app/trip/list/widgets/trip_list_item.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';

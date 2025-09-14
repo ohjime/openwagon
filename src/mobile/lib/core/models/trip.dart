@@ -69,9 +69,20 @@ class Trip {
 
   @override
   String toString() {
-    return 'Trip(id: ' 
+    return 'Trip(id: '
         '$id, hashid: $hashid, driverId: $driverId, riderId: $riderId, '
         'date: ${date?.toIso8601String()}, origin: $originAddress, '
         'destination: $destinationAddress, status: $status)';
   }
 }
+
+// Ordered list of statuses to cycle through; keep in sync with server TripStatus
+const kTripStatuses = <String>[
+  'scheduled',
+  'assigned',
+  'en_route',
+  'arrived',
+  'in_progress',
+  'completed',
+  'canceled',
+];

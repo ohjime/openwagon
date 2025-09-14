@@ -35,7 +35,7 @@ class HomePageState extends State<HomePage> {
       ],
       borderRadius: 30,
       angle: 0,
-      drawerShadowsBackgroundColor: Theme.of(context).colorScheme.primary,
+      drawerShadowsBackgroundColor: Theme.of(context).colorScheme.secondary,
       slideWidth: MediaQuery.of(context).size.width * 0.7,
       menuBackgroundColor: Theme.of(context).colorScheme.surfaceBright,
       mainScreenTapClose: true,
