@@ -18,42 +18,26 @@ class HomeDrawer extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Image.asset(
-                'assets/images/shared/logo.png',
-                height: 80,
-                width: 80,
-              ),
-              Text(
-                'TutorLM',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  fontSize: 40,
-                  letterSpacing: 0,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.start,
-              ),
               Padding(
-                padding: const EdgeInsets.only(left: 10.0),
-                child: Text(
-                  'Version 1.0.0',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w400,
-                  ),
+                padding: const EdgeInsets.only(
+                  right: 20,
+                  left: 16,
+                  bottom: 16,
+                  top: 20,
+                ),
+                child: Image.asset(
+                  'assets/images/shared/logo.png',
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onPrimaryContainer.withAlpha(150),
                 ),
               ),
               Divider(
                 height: 26,
                 indent: 5,
-                thickness: 3,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              Text(
-                'No New Notifications',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
+                thickness: 5,
+                radius: BorderRadius.circular(20),
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
               ),
               Expanded(
                 child: ListView(
@@ -142,6 +126,7 @@ class HomeDrawer extends StatelessWidget {
                         ZoomDrawer.of(context)?.close();
                         await Future.delayed(const Duration(milliseconds: 300));
                         Navigator.of(
+                          // ignore: use_build_context_synchronously
                           context,
                         ).pushNamed('support'); // Navigate to Support Page
                       },
@@ -166,6 +151,7 @@ class HomeDrawer extends StatelessWidget {
                         ZoomDrawer.of(context)?.close();
                         await Future.delayed(const Duration(milliseconds: 300));
                         Navigator.of(
+                          // ignore: use_build_context_synchronously
                           context,
                         ).pushNamed('admin'); // Navigate to Admin Page
                       },
@@ -190,6 +176,7 @@ class HomeDrawer extends StatelessWidget {
                         ZoomDrawer.of(context)?.close();
                         await Future.delayed(const Duration(milliseconds: 300));
                         Navigator.of(
+                          // ignore: use_build_context_synchronously
                           context,
                         ).pushNamed('/settings'); // Navigate to Settings Page
                       },
@@ -213,9 +200,13 @@ class HomeDrawer extends StatelessWidget {
                       onTap: () async {
                         ZoomDrawer.of(context)?.close();
                         await Future.delayed(const Duration(milliseconds: 300));
-                        Navigator.of(context).pushNamed(
-                          '/notification_debug',
-                        ); // Navigate to Notification Debug
+
+                        Navigator.of(
+                          // ignore: use_build_context_synchronously
+                          context,
+                        ).pushNamed(
+                          '/notification_debug', // Navigate to Notification Debug
+                        );
                       },
                     ),
                   ],

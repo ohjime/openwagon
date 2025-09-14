@@ -17,7 +17,7 @@ class AuthenticationRepository {
   // API endpoint for account creation
   static const String _apiBaseUrl =
       'http://192.168.1.144:8000'; // Your computer's IP address for device testing
-  static const String _createAccountEndpoint = '/api/accounts/create';
+  static const String _createAccountEndpoint = '/api/core/create';
 
   Stream<core.AuthCredential> get credential {
     return _firebaseAuth.authStateChanges().map((firebaseUser) {

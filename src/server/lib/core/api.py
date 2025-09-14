@@ -19,7 +19,7 @@ except ValueError:
     firebase_admin.initialize_app(cred)
 
 
-router = Router(tags=["accounts"])
+router = Router(tags=["core"])
 
 
 class AccountCreatePayload(Schema):
