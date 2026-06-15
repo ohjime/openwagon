@@ -1,2 +1,0 @@
-vite: cd vite && npm run dev
-django: PYTHONUNBUFFERED=1 uv run lib/main.py runserver

@@ -1,0 +1,6 @@
+# Caddy terminates TLS (auto Let's Encrypt for $DOMAIN) and proxies to gunicorn.
+# DOMAIN is provided via env/.env.prod. For local testing set DOMAIN=localhost
+# (Caddy serves it with an internal certificate).
+{$DOMAIN} {
+	reverse_proxy web:8000
+}

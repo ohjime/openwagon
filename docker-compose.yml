@@ -1,0 +1,51 @@
+# Production stack for a DigitalOcean droplet:
+#   db    — Postgres + PostGIS
+#   web   — Django (gunicorn + django-tasks worker via honcho)
+#   caddy — reverse proxy with automatic HTTPS
+#
+# Configure via env/.env.prod (copy from env/.env.example). Launch with
+# `docker compose up -d --build` (or `make deploy`).
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    env_file: ./env/.env.prod
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: src/server/Dockerfile
+    restart: unless-stopped
+    env_file: ./env/.env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: ./env/.env.prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

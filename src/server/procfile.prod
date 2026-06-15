@@ -1,0 +1,2 @@
+server: PYTHONUNBUFFERED=1 uv run --no-sync gunicorn config.asgi:application -k uvicorn_worker.UvicornWorker --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-2} --chdir src --access-logfile - --access-logformat '%(h)s "%(r)s" %(s)s %(b)s "%(f)s"' --log-level warning
+worker: PYTHONUNBUFFERED=1 uv run --no-sync src/main.py db_worker --no-reload

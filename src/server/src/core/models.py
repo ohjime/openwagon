@@ -7,7 +7,7 @@ from sqids import Sqids
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.urls import reverse
-from app.db import BaseModel
+from config.db import BaseModel
 
 
 class User(AbstractUser):

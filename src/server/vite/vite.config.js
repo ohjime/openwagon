@@ -1,9 +1,37 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import { networkInterfaces } from 'os';
 import tailwindcss from '@tailwindcss/vite';
+
+// Local LAN IP so the Vite dev server is reachable from another device (e.g. the
+// Flutter app on a phone) and matches Django's DJANGO_VITE dev_server_host.
+function getLocalIp() {
+    const nets = networkInterfaces();
+    for (const name of Object.keys(nets)) {
+        for (const net of nets[name]) {
+            // Skip internal and non-IPv4 addresses
+            if (net.family === 'IPv4' && !net.internal) {
+                return net.address;
+            }
+        }
+    }
+    return 'localhost';
+}
+
+const localIp = getLocalIp();
+console.log(`[vite] Using local IP: ${localIp}`);
 
 export default defineConfig({
     base: "/static/",
+    server: {
+        allowedHosts: [localIp, 'localhost', '127.0.0.1', '0.0.0.0'],
+        host: '0.0.0.0', // Listen on all addresses
+        port: 5173,
+        cors: true,      // Allow the phone to request resources
+        hmr: {
+            host: localIp, // Dynamically set HMR to local IP
+        },
+    },
     build: {
         manifest: "manifest.json",
         outDir: resolve("./static"),

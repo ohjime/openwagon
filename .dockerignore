@@ -1,0 +1,18 @@
+# Keep the build context small and avoid copying host-built artifacts.
+**/.git
+**/.venv
+**/__pycache__
+**/*.pyc
+**/node_modules
+**/.DS_Store
+**/.pytest_cache
+
+# Not needed in the server image
+src/mobile
+docs
+env
+
+# Regenerated during the build
+src/server/staticfiles
+src/server/vite/static
+**/*.sqlite3

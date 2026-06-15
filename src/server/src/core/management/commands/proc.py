@@ -19,23 +19,23 @@ def extract_server_url_from_procfile(path: str) -> str | None:
 
 
 class Command(LabelCommand):
-    help = "Runs Vite related commands (build / runserver / dev)"
+    help = "Runs project processes via Honcho (build / runserver / dev)"
     missing_args_message = """
 Command argument is missing, use one of:
   build       - build frontend (package manager script)
-  runserver   - start Django + Vite via Honcho
+  runserver   - start Django + Vite (+ worker) via Honcho
   dev         - alias of runserver
 Examples:
-  uv run lib/main.py vite build
-  uv run lib/main.py vite runserver
+  uv run src/main.py proc build
+  uv run src/main.py proc runserver
 """
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
         parser.add_argument(
             "--procfile",
-            default="Procfile.vite",
-            help="Path to Procfile for Honcho (default: Procfile.vite)",
+            default="procfile.dev",
+            help="Path to Procfile for Honcho (default: procfile.dev)",
         )
         parser.add_argument(
             "--package-manager",
@@ -133,8 +133,8 @@ Examples:
         }[pm]
 
         cwd = Path.cwd()
-        if (cwd / "lib" / "main.py").exists():
-            base = "uv run lib/main.py runserver"
+        if (cwd / "src" / "main.py").exists():
+            base = "uv run src/main.py runserver"
         elif (cwd / "manage.py").exists():
             base = "uv run manage.py runserver"
         else:
