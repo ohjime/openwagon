@@ -13,5 +13,5 @@ Small shell helpers used by the Makefile and the production container.
 
 - **setup_env.sh** — interactively build `env/.env.prod` for the docker-compose
   stack (Django, Postgres/PostGIS, Google Maps, AWS S3 + SES, first admin). Run it
-  via `make prod-env`. Writes the file at mode 600; `env/.env.prod` is git-ignored —
+  via `make docker-env`. Writes the file at mode 600; `env/.env.prod` is git-ignored —
   never commit it.

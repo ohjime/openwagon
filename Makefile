@@ -95,41 +95,52 @@ fake-data:
 # (build context, env/.env.prod, docker/Caddyfile) resolve correctly.
 DC = docker compose -f docker/docker-compose.yml --project-directory . --env-file env/.env.prod
 
-.PHONY: prod-env deploy logs logs-web ps shell migrate down restart prune
+.PHONY: docker-env docker-build docker-up docker-down docker-restart docker-logs docker-logs-web docker-ps docker-shell docker-migrate docker-prune docker-deploy
 
-prod-env:
+docker-env:
 	@echo "Building production env file (env/.env.prod)...\n"
 	@chmod +x bin/setup_env.sh
 	@./bin/setup_env.sh
 
-deploy:
-	@echo "Building and starting the production stack (docker compose)...\n"
-	git pull --ff-only
-	$(DC) up -d --build
-	docker image prune -f
+# Build the web image (tags waygon-web:latest, which release/worker reuse).
+docker-build:
+	$(DC) build web
 
-logs:
+docker-up:
+	$(DC) up -d
+
+docker-down:
+	$(DC) down
+
+docker-restart:
+	$(DC) restart
+
+docker-logs:
 	$(DC) logs -f
 
 # Follow the Django app server (gunicorn): print() output, tracebacks, and access
 # logs. Override line count with TAIL=N (default 100).
-logs-web:
+docker-logs-web:
 	$(DC) logs -f --tail=$(or $(TAIL),100) web
 
-ps:
+docker-ps:
 	$(DC) ps
 
-shell:
+docker-shell:
 	$(DC) exec web uv run --no-sync src/main.py shell
 
-migrate:
+docker-migrate:
 	$(DC) exec web uv run --no-sync src/main.py migrate
 
-down:
-	$(DC) down
+docker-prune:
+	docker image prune -f
 
-restart:
-	$(DC) restart
-
-prune:
+# build first, then up: release/worker only reference waygon-web:latest (no
+# build: section), so a single `up --build` makes compose try to PULL that
+# local-only tag before web builds it, which fails. Build, then up.
+docker-deploy:
+	@echo "Building and starting the production stack (docker compose)...\n"
+	git pull --ff-only
+	$(DC) build web
+	$(DC) up -d
 	docker image prune -f

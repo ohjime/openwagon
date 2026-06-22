@@ -155,4 +155,4 @@ if [[ ! -f env/fbsvc.json ]]; then
 fi
 
 echo ""
-echo "Next: 'make deploy' to build and start the stack."
+echo "Next: 'make docker-deploy' to build and start the stack."

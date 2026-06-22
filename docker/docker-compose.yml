@@ -6,8 +6,8 @@
 #   caddy     — reverse proxy with automatic HTTPS
 #
 # The image is built once (web) and reused by release/worker. Configure via
-# env/.env.prod (copy from env/.env.prod.example, or run `make prod-env`). Launch
-# with `make deploy`. All paths below are relative to the repo root because the
+# env/.env.prod (copy from env/.env.prod.example, or run `make docker-env`). Launch
+# with `make docker-deploy`. All paths below are relative to the repo root because the
 # Makefile runs compose with `--project-directory .` (see the DC variable in Makefile).
 
 services:
