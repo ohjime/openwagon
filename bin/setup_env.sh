@@ -62,8 +62,13 @@ else
     echo "  Generated."
 fi
 
-prompt          "DOMAIN (for Caddy TLS, e.g. waygon.example.com)" DOMAIN
-prompt_optional "PROD_HOSTS (comma-separated)"                   PROD_HOSTS "$DOMAIN"
+# SITE_ADDRESS = every hostname Caddy serves (one TLS cert each), comma-separated.
+# PROD_HOSTS   = Django ALLOWED_HOSTS/CSRF; a leading dot is a wildcard that covers
+#               the apex + all subdomains, so it rarely needs changing.
+prompt_optional "SITE_ADDRESS (hostnames for Caddy TLS, comma-separated)" SITE_ADDRESS "waygon.dev, admin.waygon.dev"
+prompt_optional "PROD_HOSTS (Django allowed hosts; leading-dot = wildcard)" PROD_HOSTS ".waygon.dev"
+# Apex domain (PROD_HOSTS minus any leading dot, first entry) — used for email default.
+APEX=$(printf '%s' "$PROD_HOSTS" | sed 's/^\.//' | cut -d, -f1 | tr -d ' ')
 prompt_optional "WEB_CONCURRENCY (gunicorn workers)"             WEB_CONCURRENCY "2"
 prompt          "GOOGLE_MAPS_API_KEY"                            GOOGLE_MAPS_API_KEY "" secret
 
@@ -98,7 +103,7 @@ if [[ "$aws_choice" =~ ^[Yy]$ ]]; then
     prompt_optional "AWS_STORAGE_BUCKET_NAME (blank = local filesystem)" AWS_STORAGE_BUCKET_NAME "waygon-bucket"
     prompt_optional "AWS_S3_REGION_NAME"         AWS_S3_REGION_NAME      "us-east-2"
 fi
-prompt_optional "DEFAULT_FROM_EMAIL" DEFAULT_FROM_EMAIL "noreply@${DOMAIN}"
+prompt_optional "DEFAULT_FROM_EMAIL" DEFAULT_FROM_EMAIL "noreply@${APEX}"
 
 # ── First admin ───────────────────────────────────────────────────────────────
 echo ""
@@ -114,7 +119,7 @@ cat > "$ENV_FILE" <<EOF
 # --- Django ---
 SECRET_KEY=${SECRET_KEY}
 DEBUG=false
-DOMAIN=${DOMAIN}
+SITE_ADDRESS=${SITE_ADDRESS}
 PROD_HOSTS=${PROD_HOSTS}
 WEB_CONCURRENCY=${WEB_CONCURRENCY}
 GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}

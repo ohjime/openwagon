@@ -1,0 +1,12 @@
+# Domain(s) come from the SITE_ADDRESS env var (set in env/.env.prod), so adding a
+# subdomain or moving to staging is just a config change — no edits to this file.
+# Caddy needs every served hostname listed explicitly to fetch its TLS cert, e.g.
+#   SITE_ADDRESS=waygon.dev, admin.waygon.dev
+# All hostnames proxy to the same Django app; the admin.* subdomain is served at its
+# root by Django host routing (config/middleware.py + config/urls_admin.py), so no
+# special block is needed here. For local testing use SITE_ADDRESS=localhost (Caddy
+# serves it with an internal certificate).
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy web:8000
+}

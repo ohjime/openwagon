@@ -1,0 +1,84 @@
+# Production stack for a DigitalOcean droplet:
+#   db        — Postgres + PostGIS
+#   release   — one-shot: migrate + cache table + first admin (runs on every `up`)
+#   web       — Django app server (gunicorn)
+#   worker    — django-tasks background queue
+#   caddy     — reverse proxy with automatic HTTPS
+#
+# The image is built once (web) and reused by release/worker. Configure via
+# env/.env.prod (copy from env/.env.prod.example, or run `make prod-env`). Launch
+# with `make deploy`. All paths below are relative to the repo root because the
+# Makefile runs compose with `--project-directory .` (see the DC variable in Makefile).
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    env_file: ./env/.env.prod
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  release:                                  # one-shot: migrate + cache table + admin, runs on every `up`
+    image: waygon-web:latest
+    env_file: ./env/.env.prod
+    command: sh -c "uv run --no-sync src/main.py migrate --noinput
+                    && uv run --no-sync src/main.py createcachetable
+                    && uv run --no-sync src/main.py bootstrap_admin"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  web:                                      # Django app server (gunicorn)
+    build:
+      context: .
+      dockerfile: src/server/Dockerfile
+    image: waygon-web:latest
+    restart: unless-stopped
+    env_file: ./env/.env.prod
+    command: sh -c "uv run --no-sync gunicorn config.asgi:application
+                    -k uvicorn_worker.UvicornWorker --bind 0.0.0.0:8000
+                    --workers $${WEB_CONCURRENCY:-2} --chdir src
+                    --access-logfile - --log-level warning"
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      release:
+        condition: service_completed_successfully
+
+  worker:                                   # django-tasks background queue
+    image: waygon-web:latest
+    restart: unless-stopped
+    env_file: ./env/.env.prod
+    command: uv run --no-sync src/main.py db_worker --no-reload
+    depends_on:
+      db:
+        condition: service_healthy
+      release:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: ./env/.env.prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
