@@ -4,11 +4,16 @@
 # Stage 1 — build the Vite front-end assets
 # ---------------------------------------------------------------------------
 FROM node:20-slim AS vite
-WORKDIR /build
+WORKDIR /app/vite
 COPY src/server/vite/package*.json ./
 RUN npm install
 COPY src/server/vite/ ./
-# vite.config.js outDir = ./static  ->  /build/static (with manifest.json)
+# Tailwind (vite/assets/css/main.css) scans the Django templates via
+# `@source "../../../src"`, so the app source must exist at /app/src during the
+# build — otherwise Tailwind finds no classes and emits a near-empty stylesheet
+# (JS works but the site renders completely unstyled).
+COPY src/server/src /app/src
+# vite.config.js outDir = ./static  ->  /app/vite/static (with manifest.json)
 RUN npm run build
 
 # ---------------------------------------------------------------------------
@@ -42,7 +47,7 @@ COPY bin/ /app/bin/
 
 # Built Vite assets from stage 1 (the .dockerignore keeps the source tree's
 # vite/static out, so this is the only copy).
-COPY --from=vite /build/static /app/src/server/vite/static
+COPY --from=vite /app/vite/static /app/src/server/vite/static
 
 # Collect static files into staticfiles/ (WhiteNoise compressed-manifest storage,
 # selected because DEBUG=false). No database access here.
