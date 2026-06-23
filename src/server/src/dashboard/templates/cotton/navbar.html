@@ -147,7 +147,8 @@ default you can override:
             </button>
             <!-- Desktop only: logo -->
             <div class="hidden h-16 w-16 flex-shrink-0 items-center justify-center p-2 md:flex">
-                <span class="truncate text-2xl font-extrabold tracking-wide text-base-content/80">W</span>
+                <span class="truncate text-2xl font-extrabold tracking-wide transition-colors duration-300"
+                      :class="hoverDrawer || toggleDrawer ? 'text-base-content/70' : 'text-base-content/30'">W</span>
             </div>
             <!-- Desktop only: title (slides in once sidebar has expanded) -->
             <div x-show="hoverDrawer || toggleDrawer"
