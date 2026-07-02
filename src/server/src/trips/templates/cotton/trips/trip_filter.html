@@ -1,0 +1,471 @@
+<!--
+Trip date filter — c-trips.date-filter. The dedicated date control for the
+trips page, split out of c-trips.trip-filter (which now owns only search +
+status). Two ways to pick a day, both feeding the same single-date filter:
+
+  • A horizontal strip of Apple-calendar-style day tiles (red weekday + muted
+    month on top, big day number below — all DaisyUI base/error tokens so they
+    auto-flip with the light/dark color scheme). The tile *size* is fixed; the
+    *number* of tiles is driven by the strip's width — a ResizeObserver counts
+    how many fixed-width tiles fit, and a frozen column-gap (recomputed only on
+    resize) spreads them evenly. Widen the container and another whole tile
+    appears; never partial tiles. Prev/next arrows at the end of the strip shift
+    the window one day at a time using the same slide animation.
+  • The calendar dropdown (Cally), kept for jumping to an arbitrary date/month.
+
+Selection is always-active single-day: a chip is always selected (today on load),
+clicking another selects it; there is no "clear date" here (the status form's
+reset clears search/status only). State lives in the shared `$store.tripFilter`
+so this component, the search box and the status radios all contribute to one
+htmx request — see the store registered in trips/pages/trips.html.
+-->
+<div class="w-full" x-data="tripDateFilter()" x-init="init()" x-cloak>
+    <style>
+        [x-cloak] {
+            display: none !important
+        }
+    </style>
+    <!-- Day-chip strip (clipped) + prev/next arrows. The clip wrapper hides
+         overflow; the inner strip is animated via inline transform/transition.
+         A frozen column-gap (gapPx, recomputed only on resize) keeps chip
+         positions fixed: the n+1th chip occupies exactly one slot (slotPx) to
+         the right of the clip boundary and slides into view during the
+         animation — adding it never reflows the visible chips, because the gap
+         is no longer redistributed by justify-between on every slide. -->
+    <div class="-mt-8 flex w-full flex-row items-center gap-2">
+        {# djlint:off #}
+        <button type="button"
+                @click="shiftWindow(-1)"
+                :disabled="_sliding"
+                aria-label="Previous day"
+                class="flex h-14 w-6 shrink-0 cursor-pointer items-center justify-center text-base-content/40 transition-colors hover:text-base-content disabled:cursor-default disabled:opacity-30">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="size-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+            </svg>
+        </button>
+        {# djlint:on #}
+        <div class="min-w-0 flex-1 overflow-hidden">
+            {# djlint:off #}
+        <div class="flex flex-row flex-nowrap pb-4 pt-2 [transform:translateZ(0)] [backface-visibility:hidden] [will-change:transform]" x-ref="strip" :style="`column-gap:${gapPx}px`">
+            <template x-for="day in days" :key="day.key">
+                <div class="indicator mt-0.5">
+                    <span class="indicator-item badge badge-sm bg-red-500 text-white"
+                            x-show="counts[day.key] > 0"
+                            x-text="counts[day.key]"></span>
+                    <button type="button indicator"
+                            @click="selectDay(day.key)"
+                            class="flex h-16 w-15 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border bg-base-100 shadow-sm transition-colors"
+                            :class="day.key === selectedKey ? 'border-primary ring-2 ring-primary' : 'border-base-300 hover:bg-base-200'">
+                        <!-- Trip-count notification badge. Kept inside the chip's top-right
+                            corner (not overhanging) so the strip's overflow-hidden clip
+                            never cuts it off on the first/last chip. Hidden when zero. -->
+                        
+                        <span class="flex items-baseline gap-1 leading-none">
+                            <span class="text-[0.65rem] font-extrabold text-error" x-text="day.dow"></span>
+                            <span class="text-[0.65rem] font-extrabold text-base-content/50" x-text="day.mon"></span>
+                        </span>
+                        <span class="text-3xl font-black leading-none text-base-content" x-text="day.dom"></span>
+                    </button>
+                </div>
+
+            </template>
+        </div>
+            {# djlint:on #}
+        </div>
+        <!-- Next arrow on the right; prev arrow mirrors it on the left. -->
+        {# djlint:off #}
+        <button type="button"
+                @click="shiftWindow(1)"
+                :disabled="_sliding"
+                aria-label="Next day"
+                class="flex h-14 w-6 shrink-0 cursor-pointer items-center justify-center text-base-content/40 transition-colors hover:text-base-content disabled:cursor-default disabled:opacity-30">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="size-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+        </button>
+        {# djlint:on #}
+    </div>
+    <!-- Header: big selected date (opens calendar) on the left, window label +
+         prev/next page arrows on the right. -->
+    <div class="relative flex flex-row items-center w-full py-2">
+        <div class="flex flex-row w-full">
+            <label class="input w-full max-w-72">
+                <svg class="h-[1em] opacity-50"
+                     xmlns="http://www.w3.org/2000/svg"
+                     viewBox="0 0 24 24">
+                    <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.3-4.3"></path>
+                    </g>
+                </svg>
+                {# djlint:off #}
+                <input type="text"
+                       name="search"
+                       value="{{ request.GET.search }}"
+                       placeholder="Search Trips"
+                       x-model="$store.tripFilter.search"
+                       @input.debounce.300ms="$store.tripFilter.apply()">
+                {# djlint:on #}
+            </label>
+            <i class="mx-2 htmx-indicator fa fa-spinner fa-pulse"></i>
+            <span class="loading loading-spinner text-success htmx-indicator" id="spinner"></span>
+        </div>
+        <div class="flex-1"></div>
+        <!-- Calendar trigger -->
+        {# djlint:off #}
+        <button @click="showCalendar = !showCalendar"
+                :aria-expanded="showCalendar"
+                x-ref="dateInputButton"
+                class="!pr-0 flex flex-row btn btn-ghost">
+            <div class="text-2xl font-medium font-sans" x-html="formattedSelected"></div>
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 height="48px"
+                 viewBox="0 -960 960 960"
+                 width="48px">
+                <path d="M480-360 280-559h400L480-360Z" />
+            </svg>
+        </button>
+        {# djlint:on #}
+        <!-- Calendar dropdown (kept for arbitrary date/month jumps) -->
+        {# djlint:off #}
+        <div x-show="showCalendar"
+             x-transition.opacity
+             @click.outside="showCalendar = false"
+             class="absolute z-50 mt-2 top-full right-0">
+            <calendar-date class="cally bg-base-100 border border-base-300 shadow-lg rounded-box" :value="selectedKey" @change="onCalendarChange($event)" @input="onCalendarChange($event)">
+            <svg aria-label="Previous"
+                 class="fill-current size-4"
+                 slot="previous"
+                 xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 24 24">
+                <path fill="currentColor" d="M15.75 19.5 8.25 12l7.5-7.5"></path>
+            </svg>
+            <svg aria-label="Next"
+                 class="fill-current size-4"
+                 slot="next"
+                 xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 24 24">
+                <path fill="currentColor" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path>
+            </svg>
+            <calendar-month></calendar-month>
+            <button type="button" @click="goToToday()" class="btn btn-sm btn-block btn-ghost mt-1">Go to today</button>
+            </calendar-date>
+        </div>
+        {# djlint:on #}
+    </div>
+    <!-- Component logic. Alpine/htmx/Cally are bundled globally (main.js). -->
+    {# djlint:off #} <script>
+        function tripDateFilter() {
+            // Fixed chip footprint used to decide how many chips fit the strip.
+            const CHIP_WIDTH = 64; // w-16
+            const MIN_GAP = 20; // min chip-to-chip gap; also the per-slot footprint
+            // used to count chips, so a larger value fits one fewer chip and the
+            // frozen gap redistributes wider — a touch more breathing room.
+            const MAX_CHIPS = 31; // sane upper bound (~a month)
+            // Closure variable (not on `this`) to keep the setTimeout ID out of
+            // Alpine's deep-reactive proxy — proxying timers causes subtle issues.
+            let slideTimer = null;
+            return {
+                showCalendar: false,
+                anchorTime: 0, // ms at local midnight of the first visible day
+                visibleCount: 7, // updated by the ResizeObserver
+                gapPx: MIN_GAP, // frozen chip-to-chip gap; recomputed only on resize
+                slotPx: CHIP_WIDTH + MIN_GAP, // chip pitch (width + gap); slide distance
+                _sliding: false, // true while a slide animation runs
+                _slideDir: 0, // +1 sliding left (append), -1 sliding right (prepend)
+                counts: {}, // { 'YYYY-MM-DD': tripCount } for the visible window
+                countsEndpoint: '{% url "trips_htmx_counts" %}',
+
+                init() {
+                    // Activate today's filter (as the second chip) and kick off
+                    // the first table load.
+                    this.focusDate(new Date());
+                    // Measure now and on every strip resize.
+                    this.recount();
+                    this._ro = new ResizeObserver(() => this.recount());
+                    this._ro.observe(this.$refs.strip);
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape') this.showCalendar = false;
+                    });
+                    // A new trip can land on a visible day — refresh its badge.
+                    window.addEventListener('trip-created', () => this.fetchCounts());
+                    // Refetch per-day trip counts whenever the visible window
+                    // shifts (paging, sliding, calendar jump) or grows/shrinks.
+                    this.$watch('anchorTime', () => this.fetchCounts());
+                    this.$watch('visibleCount', () => this.fetchCounts());
+                    this.$nextTick(() => {
+                        this.recount();
+                        this.fetchCounts();
+                        this.$store.tripFilter.apply();
+                    });
+                },
+
+                // --- Per-day trip-count badges ---
+                // Fetch counts for the visible window (plus a one-day buffer each
+                // side so a chip sliding into view already has its badge) and store
+                // them keyed by YYYY-MM-DD. Days with no trips are simply absent.
+                fetchCounts() {
+                    const list = this.days;
+                    if (!list.length) return;
+                    const startD = this.ymdToDate(list[0].key);
+                    const endD = this.ymdToDate(list[list.length - 1].key);
+                    if (!startD || !endD) return;
+                    startD.setDate(startD.getDate() - 1);
+                    endD.setDate(endD.getDate() + 1);
+                    const url = `${this.countsEndpoint}?start=${this.toYmd(startD)}&end=${this.toYmd(endD)}`;
+                    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                        .then((r) => (r.ok ? r.json() : {}))
+                        .then((data) => { this.counts = data || {}; })
+                        .catch(() => {});
+                },
+
+                // --- Window of visible days, derived from anchor + fitted count ---
+                get days() {
+                    const base = new Date(this.anchorTime);
+                    const out = [];
+                    // While sliding, render one extra chip so it can enter the view
+                    // as the strip translates. Sliding LEFT (dir -1) prepends a lead
+                    // chip off-screen left; sliding RIGHT (dir +1) appends a trailing
+                    // chip off-screen right. The anchor itself never moves until the
+                    // slide ends (see _endSlide) — keeping fetchCounts and the re-key
+                    // off the animation so badges/selection don't flash mid-move.
+                    const lead = (this._sliding && this._slideDir === -1) ? 1 : 0;
+                    const count = this._sliding ? this.visibleCount + 1 : this.visibleCount;
+                    for (let i = 0; i < count; i++) {
+                        const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i - lead);
+                        out.push({
+                            key: this.toYmd(d),
+                            dow: d.toLocaleString(undefined, {
+                                weekday: 'short'
+                            }),
+                            mon: d.toLocaleString(undefined, {
+                                month: 'short'
+                            }),
+                            dom: d.getDate(),
+                        });
+                    }
+                    return out;
+                },
+                get selectedKey() {
+                    return this.$store.tripFilter.date || '';
+                },
+                get formattedSelected() {
+                    return this.formatDate(this.ymdToDate(this.selectedKey)) || 'Select date';
+                },
+                get windowLabel() {
+                    const list = this.days;
+                    if (!list.length) return '';
+                    const first = this.ymdToDate(list[0].key);
+                    const last = this.ymdToDate(list[list.length - 1].key);
+                    const fM = first.toLocaleString(undefined, {
+                        month: 'short'
+                    });
+                    const lM = last.toLocaleString(undefined, {
+                        month: 'short'
+                    });
+                    if (first.getFullYear() !== last.getFullYear()) {
+                        return `${fM} ${first.getFullYear()} – ${lM} ${last.getFullYear()}`;
+                    }
+                    if (fM !== lM) return `${fM} – ${lM} ${last.getFullYear()}`;
+                    return `${fM} ${last.getFullYear()}`;
+                },
+
+                // --- Sizing: how many fixed-width chips fit the strip's width ---
+                recount() {
+                    if (slideTimer) { // abort in-flight slide on resize
+                        clearTimeout(slideTimer);
+                        slideTimer = null;
+                        const s = this.$refs.strip;
+                        if (s) {
+                            s.style.transition = 'none';
+                            s.style.transform = '';
+                        }
+                        this._sliding = false;
+                        this._slideDir = 0;
+                    }
+                    const strip = this.$refs.strip;
+                    const width = strip?.clientWidth || 0;
+                    // Measure a real rendered chip — chips are fixed-size, but the
+                    // CHIP_WIDTH constant can drift from the actual w-* utility, so
+                    // the frozen gap is derived from the true footprint.
+                    const btn = strip?.querySelector('button');
+                    const chipW = btn ? btn.getBoundingClientRect().width : CHIP_WIDTH;
+                    const n = Math.floor((width + MIN_GAP) / (chipW + MIN_GAP));
+                    const count = Math.max(1, Math.min(MAX_CHIPS, n));
+                    this.visibleCount = count;
+                    // Freeze the chip-to-chip gap so `count` chips touch both edges
+                    // (same resting spacing justify-between gave), but as a fixed
+                    // value: sliding the extra chip in no longer reflows the row.
+                    // Recomputed ONLY here — on first measure and on container resize.
+                    this.gapPx = count > 1 ? Math.max(MIN_GAP, (width - count * chipW) / (count - 1)) : MIN_GAP;
+                    this.slotPx = chipW + this.gapPx;
+                },
+
+                // --- Interaction ---
+                selectDay(key) {
+                    this.$store.tripFilter.date = key;
+                    this.$store.tripFilter.apply();
+                    if (this._sliding) return;
+                    const list = this.days;
+                    if (!list.length) return;
+                    // Last chip: slide window left (next day enters from the right).
+                    // First chip: slide window right (prev day enters from the left).
+                    // slotPx is the frozen pitch, so no per-slide remeasure is needed.
+                    if (key === list[list.length - 1].key) this._startSlide(+1, this.slotPx);
+                    else if (key === list[0].key) this._startSlide(-1, this.slotPx);
+                },
+                // Prev/next arrows: shift the whole window one day with the slide
+                // animation, regardless of which chip is currently selected.
+                shiftWindow(direction) {
+                    if (this._sliding) return;
+                    this._startSlide(direction, this.slotPx);
+                },
+                // direction +1 → slide left  (window advances; trailing chip enters right)
+                // direction -1 → slide right (window retreats; lead chip enters left)
+                // The anchor is NOT touched here — only in _endSlide — so neither the
+                // re-key nor fetchCounts runs while the strip is moving. The extra chip
+                // (lead for -1, trailing for +1) is supplied by the days getter.
+                // slotPx: frozen chip pitch (width + gapPx), computed in recount()
+                _startSlide(direction, slotPx) {
+                    if (this._sliding) return;
+                    this._slideDir = direction;
+                    // Prepend (direction -1) inserts the lead chip at index 0, which
+                    // shoves every visible chip one slot to the right. Alpine flushes
+                    // that DOM insert on a microtask (before the next paint), but
+                    // $nextTick defers the compensating transform to a post-paint
+                    // macrotask — so without help the browser paints one frame of the
+                    // shoved-right window (the "flash", most visible on a badged or
+                    // selected chip) before the transform lands. Commit that start
+                    // transform SYNCHRONOUSLY here, in the same task that queues the
+                    // insert, so both are in place before anything paints. An append
+                    // (direction +1) parks its extra chip off-screen right on its own,
+                    // so transform 0 is already correct and needs no pre-commit.
+                    const strip = this.$refs.strip;
+                    if (direction === -1 && strip) {
+                        strip.style.transition = 'none';
+                        strip.style.transform = `translate3d(-${slotPx}px,0,0)`;
+                    }
+                    this._sliding = true; // triggers the extra-chip render via days getter
+                    this.$nextTick(() => {
+                        const s = this.$refs.strip;
+                        if (!s) {
+                            this._sliding = false;
+                            this._slideDir = 0;
+                            return;
+                        }
+                        if (direction === -1) {
+                            // Start transform (-slotPx) was pre-committed synchronously
+                            // above and has already painted; animate it back to 0 to
+                            // slide the lead chip in from the left.
+                            s.getBoundingClientRect(); // commit the pre-set start state
+                            s.style.transition = `transform 280ms cubic-bezier(0.4,0,0.2,1)`;
+                            s.getBoundingClientRect(); // commit the transition prop
+                            s.style.transform = 'translate3d(0,0,0)';
+                        } else {
+                            // Trailing chip is off-screen right; animate left to reveal it.
+                            s.getBoundingClientRect();
+                            s.style.transition = `transform 280ms cubic-bezier(0.4,0,0.2,1)`;
+                            s.getBoundingClientRect();
+                            s.style.transform = `translate3d(-${slotPx}px,0,0)`;
+                        }
+                        slideTimer = setTimeout(() => this._endSlide(direction), 320);
+                    });
+                },
+                _endSlide(direction) {
+                    clearTimeout(slideTimer);
+                    slideTimer = null;
+                    const strip = this.$refs.strip;
+                    if (strip) {
+                        strip.style.transition = 'none';
+                        strip.style.transform = '';
+                    }
+                    this._sliding = false;
+                    this._slideDir = 0;
+                    // Commit the one-day shift now that the slide is done: the window
+                    // already moved visually, so changing the anchor (and the resulting
+                    // re-key + fetchCounts) happens off-animation. +1 advances, -1 retreats.
+                    const base = new Date(this.anchorTime);
+                    base.setDate(base.getDate() + direction);
+                    this.anchorTime = this.startOfDay(base).getTime();
+                },
+                pageBy(direction) {
+                    // Shift by visibleCount-1 so the last/first chip becomes the
+                    // first/last of the new window — continuity anchor.
+                    const step = Math.max(1, this.visibleCount - 1);
+                    const base = new Date(this.anchorTime);
+                    base.setDate(base.getDate() + direction * step);
+                    this.anchorTime = this.startOfDay(base).getTime();
+                },
+                onCalendarChange(event) {
+                    const detail = event?.detail ?? event?.target?.value ?? event;
+                    const parsed = this.parseDateMaybe(detail?.value ?? detail);
+                    if (!parsed) return;
+                    this.focusDate(parsed);
+                    this.showCalendar = false;
+                    this.$store.tripFilter.apply();
+                },
+                // Calendar "Go to today" shortcut.
+                goToToday() {
+                    this.focusDate(new Date());
+                    this.showCalendar = false;
+                    this.$store.tripFilter.apply();
+                },
+                // Select `date` and frame the window so it sits as the SECOND chip
+                // (one day of lead-in on the left), never the first. Used on load,
+                // calendar pick and "Go to today".
+                focusDate(date) {
+                    const day = this.startOfDay(date);
+                    const anchor = new Date(day);
+                    anchor.setDate(anchor.getDate() - 1);
+                    this.anchorTime = this.startOfDay(anchor).getTime();
+                    this.$store.tripFilter.date = this.toYmd(day);
+                },
+
+                // --- Date helpers ---
+                startOfDay(date) {
+                    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                },
+                toYmd(date) {
+                    if (!date) return '';
+                    const tzOffset = date.getTimezoneOffset() * 60000;
+                    return new Date(date.getTime() - tzOffset).toISOString().split('T')[0];
+                },
+                ymdToDate(val) {
+                    if (!val || !/^\d{4}-\d{2}-\d{2}$/.test(val)) return null;
+                    const [y, m, d] = val.split('-').map(Number);
+                    return new Date(y, m - 1, d);
+                },
+                parseDateMaybe(val) {
+                    if (!val) return null;
+                    if (val instanceof Date) return val;
+                    const ymd = this.ymdToDate(val);
+                    if (ymd) return ymd;
+                    const d = new Date(val);
+                    return isNaN(d.getTime()) ? null : d;
+                },
+                ordinalSuffix(n) {
+                    const v = n % 100;
+                    if (v >= 11 && v <= 13) return 'th';
+                    switch (n % 10) {
+                        case 1:
+                            return 'st';
+                        case 2:
+                            return 'nd';
+                        case 3:
+                            return 'rd';
+                        default:
+                            return 'th';
+                    }
+                },
+                formatDate(date) {
+                    if (!date) return '';
+                    const month = date.toLocaleString(undefined, {
+                        month: 'long'
+                    });
+                    const day = date.getDate();
+                    return `${month} ${day}<sup>${this.ordinalSuffix(day)}</sup>, ${date.getFullYear()}`;
+                },
+            }
+        }
+    </script> {# djlint:on #}
+</div>

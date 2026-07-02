@@ -1,0 +1,93 @@
+<!--
+One labelled origin/destination address field with a Recent-locations history
+button — c-trip.location-field.
+
+Presentational only: it renders into a PARENT Alpine scope (tripDetail in
+core/trip_detail.html, tripForm in core/trip_new.html) and drives that scope by
+the `field` name, so both scopes must expose the same shape:
+  • {field}                — the text model (e.g. origin / destination)
+  • {field}Id              — the resolved Google place id
+  • show{Field} / {field}Preds — the autocomplete dropdown state + list
+  • fetchPredictions(field) / selectPrediction(field, pred)
+  • selectHistory(field, address, placeId)  ← picks a past Place
+The history button toggles a LOCAL dropdown (its own x-data) listing the recent
+pickups + destinations the view passes in; clicking a row fills THIS field.
+
+Usage:
+  c-trip.location-field field="origin" label="Pickup Location" required
+    placeholder="Enter a start address"
+    :recent-pickups="recent_pickups" :recent-destinations="recent_destinations"
+-->
+<c-vars required="" placeholder="Enter an address" />
+<div class="relative" x-data="{ histOpen: false }">
+    <label class="label">
+        <span class="label-text">{{ label }}
+            {% if required %}<span class="text-error">*</span>{% endif %}
+        </span>
+    </label>
+    {# djlint:off #}
+    <div class="join w-full">
+        <input type="text"
+               autocomplete="off"
+               placeholder="{{ placeholder }}"
+               class="input join-item w-full"
+               x-model="{{ field }}"
+               @focus="histOpen = false; show{{ field|capfirst }} = {{ field }}Preds.length > 0"
+               @input.debounce.300ms="fetchPredictions('{{ field }}')" />
+        <button type="button"
+                class="btn btn-ghost join-item border border-base-300"
+                @click="histOpen = !histOpen; show{{ field|capfirst }} = false"
+                aria-label="Recent locations"
+                title="Recent locations">
+            <c-icons.history class="size-5" />
+        </button>
+    </div>
+    <!-- Autocomplete suggestions (parent scope) -->
+    <ul x-show="show{{ field|capfirst }}"
+        x-cloak
+        @click.outside="show{{ field|capfirst }} = false"
+        class="menu absolute z-30 mt-1 max-h-64 w-full flex-nowrap overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg">
+        <template x-for="pred in {{ field }}Preds" :key="pred.place_id">
+            <li><a class="whitespace-normal" @click.prevent="selectPrediction('{{ field }}', pred)" x-text="pred.description"></a></li>
+        </template>
+        <li x-show="{{ field }}Preds.length === 0" class="px-3 py-2 text-sm opacity-60">No suggestions</li>
+    </ul>
+    <!-- Recent-locations history (server-rendered rows; fills THIS field) -->
+    <div x-show="histOpen"
+         x-cloak
+         @click.outside="histOpen = false"
+         class="absolute z-40 mt-1 max-h-96 w-full overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg">
+        {% if recent_pickups %}
+            <div class="bg-base-200 px-3 py-2 text-sm font-medium text-base-content/60">Recent Pickups</div>
+            <ul class="menu w-full gap-0 p-0">
+                {% for p in recent_pickups %}
+                    <li>
+                        <a class="flex items-center gap-2 whitespace-normal rounded-none border-b border-base-200"
+                           @click.prevent="selectHistory('{{ field }}', '{{ p.address|escapejs }}', '{{ p.id|escapejs }}'); histOpen = false">
+                            <c-icons.location-pin class="size-4 shrink-0 opacity-60" />
+                            <span>{{ p.address }}</span>
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        {% if recent_destinations %}
+            <div class="bg-base-200 px-3 py-2 text-sm font-medium text-base-content/60">Recent Destinations</div>
+            <ul class="menu w-full gap-0 p-0">
+                {% for p in recent_destinations %}
+                    <li>
+                        <a class="flex items-center gap-2 whitespace-normal rounded-none border-b border-base-200"
+                           @click.prevent="selectHistory('{{ field }}', '{{ p.address|escapejs }}', '{{ p.id|escapejs }}'); histOpen = false">
+                            <c-icons.location-pin class="size-4 shrink-0 opacity-60" />
+                            <span>{{ p.address }}</span>
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        {% if not recent_pickups and not recent_destinations %}
+            <div class="px-3 py-3 text-sm opacity-60">No recent locations yet</div>
+        {% endif %}
+    </div>
+    {# djlint:on #}
+</div>

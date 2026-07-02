@@ -1,0 +1,80 @@
+{% extends "dashboard/base.html" %}
+<!--
+The `app` (dispatcher) shell. Extends core's bare `dashboard/base.html` and fills
+the two app-supplied blocks it leaves open:
+
+  - nav_actions — the header action button(s)
+  - nav_items   — the sidebar entries (this dashboard's routes)
+
+This is the one place the app wires its own routes into the core shell, which is
+exactly why core stays free of any app URLs. Pages that want the full shell
+either extend this template (static pages like home) or are rendered into it by
+nav_response(..., base_template="app/base.html").
+-->
+{% block nav_actions %}
+    <!-- The dispatcher's ONE header action: a single, static + New quick-create
+       menu. It is deliberately NOT dynamic — there are no per-page nav-actions
+       groups and no profile/avatar here, so the action set never changes with
+       the active page. This is the whole content the app feeds into the core
+       navbar's `actions` slot; core renders it as-is (see dashboard/base.html →
+       navbar.html), and shows nothing if an app supplies nothing.
+
+       New Trip opens the shared trip drawer via core_trip_new (the same
+       #trip_drawer_content target the trip-detail buttons use); New Rider / New
+       Call are placeholders until those flows exist.
+
+       Open/close is driven by Alpine (not daisyUI's focus-based dropdown) so
+       choosing an item dismisses the menu immediately — otherwise it lingers on
+       top of the drawer that just opened. @click.outside and Escape also close
+       it; x-cloak hides it until Alpine initializes. -->
+    <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false">
+        <button type="button" class="btn" :aria-expanded="open" @click="open = !open">
+            <c-icons.add class="size-[1.2em]" />
+            New
+        </button>
+        <ul x-show="open"
+            x-cloak
+            x-transition.opacity
+            @click.outside="open = false"
+            class="menu absolute right-0 z-50 mt-3 w-52 menu-sm rounded-box bg-base-100 p-2 shadow-lg">
+            <li>
+                <a class="justify-between"
+                   @click="open = false"
+                   hx-get="{% url 'core_trip_new' %}"
+                   hx-target="#trip_drawer_content"
+                   hx-swap="innerHTML">
+                    New Trip
+                    <span class="badge">New</span>
+                </a>
+            </li>
+            <li>
+                <a class="justify-between" @click="open = false">
+                    New Rider
+                    <span class="badge">New</span>
+                </a>
+            </li>
+            <li>
+                <a class="justify-between" @click="open = false">
+                    New Call
+                    <span class="badge">New</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+{% endblock nav_actions %}
+{% block nav_items %}
+    <c-dashboard.nav-item label="Trips" key="trips" url="{% url 'app_trips' %}" target="#app_content">
+        <c-icons.route />
+    </c-dashboard.nav-item>
+    <c-dashboard.nav-section name="Users">
+        <c-slot name="icon">
+            <c-icons.users />
+        </c-slot>
+        <c-dashboard.nav-child label="Drivers" key="drivers" url="{% url 'app_drivers' %}" target="#app_content">
+            <c-icons.driver />
+        </c-dashboard.nav-child>
+        <c-dashboard.nav-child label="Riders" key="riders" url="{% url 'app_riders' %}" target="#app_content">
+            <c-icons.rider />
+        </c-dashboard.nav-child>
+    </c-dashboard.nav-section>
+{% endblock nav_items %}

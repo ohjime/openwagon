@@ -1,0 +1,89 @@
+{% extends "django_tables2/table.html" %}
+{% load django_tables2 i18n %}
+<!--
+The drivers table body. Extends django-tables2's base table template and fully
+overrides thead/tbody so each row is laid out by hand (driver card, contact,
+trip counts, availability) — the same approach as the trips table. Rendered two
+ways, both via render_table:
+
+  - inside drivers/pages/drivers.html on a full page / nav swap, and
+  - on its own by the `drivers_htmx_table` filter endpoint, which swaps just this
+    fragment back into #drivers_table as the filter bar changes.
+
+The driver's D-pk button transitions the main content to the driver's detail
+page: its hx-get hits `drivers_htmx_detail` (a url tag, never a raw URL),
+which swaps the profile into #app_content. There is no driver drawer — the only
+drawer in the app is the shared trip drawer.
+-->
+{% block table.thead %}
+    {% if table.show_header %}
+        <thead>
+            <tr>
+                <th>
+                    <div class="w-60 flex items-center gap-3.5">
+                        <input type="checkbox" class="checkbox" />
+                        <div class="truncate w-32">Driver and ID</div>
+                    </div>
+                </th>
+                <td>Contact</td>
+                <td>Trips</td>
+                <td>Availability</td>
+            </tr>
+        </thead>
+    {% endif %}
+{% endblock table.thead %}
+{% block table.tbody %}
+    <tbody>
+        {% for row in table.rows %}
+            {% with driver=row.record %}
+                <tr class="hover:bg-base-200">
+                    <th>
+                        <div class="w-60 flex items-center gap-3">
+                            <input type="checkbox" class="checkbox" />
+                            <div class="avatar skeleton">
+                                <div class="mask mask-squircle h-12 w-12">
+                                    <img src="{{ driver.account.avatar_src }}" alt="Driver Avatar" width="48" height="48" />
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                <div class="truncate font-medium w-32">{{ driver.account.first_name }} {{ driver.account.last_name }}</div>
+                                <!-- Swap the driver detail into the main content region.
+                                   The detail view also sends HX-Retarget #app_content
+                                   as a backstop. -->
+                                <button class="btn btn-soft truncate w-fit font-mono uppercase font-normal px-2"
+                                        hx-get="{% url 'drivers_htmx_detail' driver.pk %}"
+                                        hx-target="#app_content"
+                                        hx-swap="innerHTML">
+                                    <div class="truncate">D-{{ driver.pk }}</div>
+                                </button>
+                            </div>
+                        </div>
+                    </th>
+                    <td>
+                        <div class="flex flex-col w-56">
+                            <div class="truncate">{{ driver.account.email }}</div>
+                            <div class="opacity-70">{{ driver.account.phone|default:"No phone" }}</div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="flex flex-col w-28">
+                            <div class="text-lg font-semibold">{{ driver.trips_total }}</div>
+                            <div class="text-sm opacity-70">{{ driver.trips_open }} open</div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="w-40">
+                            {% if driver.trips_active %}
+                                <div class="py-1 px-2 rounded-3xl w-fit capitalize bg-yellow-100">On Trip</div>
+                            {% else %}
+                                <div class="py-1 px-2 rounded-3xl w-fit capitalize bg-green-300">Available</div>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% endwith %}
+        {% endfor %}
+    </tbody>
+{% endblock table.tbody %}
+{% block pagination %}
+{% endblock pagination %}

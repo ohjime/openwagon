@@ -1,0 +1,30 @@
+{% extends "app/base.html" %}
+{% block content %}
+    <div class="mx-auto max-w-3xl space-y-6 px-6 py-12">
+        <div class="space-y-2">
+            <h1 class="text-3xl font-bold">Dispatcher</h1>
+            <p class="text-base-content/70">
+                The dispatcher dashboard. Pick a section from the sidebar to get
+                started — open <strong>Users</strong> to browse the people in the
+                application, or jump straight to <strong>Trips</strong>.
+            </p>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-200 p-6">
+            <h2 class="mb-2 text-lg font-semibold">Users</h2>
+            <p class="mb-4 text-sm text-base-content/70">
+                Browse every driver and rider registered through the app, with
+                their trip activity at a glance.
+            </p>
+            <div class="flex flex-wrap gap-3">
+                <a class="btn btn-primary"
+                   hx-get="{% url 'app_drivers' %}"
+                   hx-target="#app_content"
+                   hx-swap="innerHTML">View Drivers</a>
+                <a class="btn btn-primary btn-outline"
+                   hx-get="{% url 'app_riders' %}"
+                   hx-target="#app_content"
+                   hx-swap="innerHTML">View Riders</a>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

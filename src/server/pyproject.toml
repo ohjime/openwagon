@@ -40,6 +40,8 @@ dependencies = [
     "firebase-admin>=6.5.0",
     # Allow the Flutter web build (separate origin/port) to call the API in dev.
     "django-cors-headers>=4.3.0",
+    "dicebear-core>=10.3.0",
+    "dicebear-styles>=10.2.0",
 ]
 
 [dependency-groups]

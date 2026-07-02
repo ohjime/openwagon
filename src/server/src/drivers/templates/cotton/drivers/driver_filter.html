@@ -1,0 +1,111 @@
+<!--
+Driver filter bar — c-drivers.driver-filter. A debounced search box plus an
+availability radio group. On any change it builds a query string and htmx-GETs
+the `drivers_htmx_table` endpoint (via a url tag, never a raw URL),
+swapping the rows into #drivers_table.
+
+A simpler sibling of the trips filter: drivers have no single date/status of
+their own, so the meaningful filters are text search and availability (derived
+server-side from whether the driver is currently on a trip). Alpine, htmx and
+Cally are bundled in main.js, so there is no CDN script here.
+-->
+<div class="w-full" x-data="driverFilter()" x-init="init()" x-cloak>
+    <style>
+        [x-cloak] {
+            display: none !important
+        }
+    </style>
+    <div class="flex flex-row w-full items-center py-2">
+        <!-- Search Bar -->
+        <label class="input">
+            <svg class="h-[1em] opacity-50"
+                 xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 24 24">
+                <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+                </g>
+            </svg>
+            {# djlint:off #}
+            <input type="text"
+                   name="search"
+                   value="{{ request.GET.search }}"
+                   placeholder="Search Drivers"
+                   x-model.debounce.300ms="selectedText"
+                   @input="onSearchInput($event)">
+            {# djlint:on #}
+        </label>
+        <i class="mx-2 htmx-indicator fa fa-spinner fa-pulse"></i>
+        <span class="loading loading-spinner text-success htmx-indicator"
+              id="drivers_spinner"></span>
+        <div class="flex-1"></div>
+        <!-- Availability Filter -->
+        {# djlint:off #}
+        <form class="filter gap-y-2"
+              @reset="onFormReset($event)">
+            <input class="btn mx-2 bg-green-400 hover:bg-green-500 border-green-400 hover:border-green-500 text-white"
+                   type="radio"
+                   name="availability"
+                   value="available"
+                   aria-label="Available"
+                   x-model="selectedAvailability" />
+            <input class="btn mx-2 bg-yellow-400 hover:bg-yellow-500 border-yellow-400 hover:border-yellow-500 text-white"
+                   type="radio"
+                   name="availability"
+                   value="on_trip"
+                   aria-label="On Trip"
+                   x-model="selectedAvailability" />
+            <input class="btn btn-square ml-2"
+                   type="reset"
+                   value="×" />
+        </form>
+        {# djlint:on #}
+    </div>
+    <!-- Component logic. Alpine is bundled globally (main.js), so no CDN load. -->
+    {# djlint:off #}
+    <script>
+        function driverFilter() {
+            return {
+                // Filters
+                selectedAvailability: null,
+                selectedText: '',
+
+                init() {
+                    // React to availability selection changes. No initial emit:
+                    // the server already rendered the full table for this page.
+                    this.$watch('selectedAvailability', () => this.emit());
+                },
+
+                // Event handlers
+                onSearchInput(e) {
+                    this.selectedText = e.target.value ?? '';
+                    this.emit();
+                },
+                onFormReset(_e) {
+                    // Allow native reset first, then sync Alpine state.
+                    queueMicrotask(() => {
+                        this.selectedText = '';
+                        this.selectedAvailability = null;
+                        this.emit();
+                    });
+                },
+                emit() {
+                    // Build query string for the HTMX request.
+                    const params = new URLSearchParams();
+                    if (this.selectedText && this.selectedText.trim().length) params.append('search', this.selectedText.trim());
+                    if (this.selectedAvailability && this.selectedAvailability.trim().length) params.append('availability', this.selectedAvailability.trim());
+                    // Find the table container to update.
+                    const target = document.querySelector('#drivers_table');
+                    if (target) {
+                        htmx.ajax('GET', '{% url "drivers_htmx_table" %}?' + params.toString(), {
+                            target: target,
+                            swap: 'innerHTML',
+                            indicator: '.htmx-indicator'
+                        });
+                    }
+                },
+            }
+        }
+</script>
+    {# djlint:on #}
+</div>

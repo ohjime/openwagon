@@ -1,0 +1,467 @@
+{% load tz %}
+<!--
+Trip detail drawer body — the ONE shared drawer in the app. Rendered by
+core.views.show_trip, which retargets this into #trip_drawer_content and fires
+show-drawer to slide the shell's base drawer open.
+
+Lives in core (not trips) so it is globally available: the trips table opens it,
+and so do the drivers/riders detail pages' recent-trip rows — all via the core
+core_trip_drawer URL, so no feature ever depends on another feature. This is the
+only content the base drawer is ever given.
+
+Layout emulates a reservation editor: a 2-col grid (lg+) of four blocks —
+  • Customer + Trip basics (top-left) — customer name/phone, booking agent,
+    Pickup Date/Time (Cally date + 12-hour time spinner), Pickup Location +
+    Destination (Google Places autocomplete, each with a Recent-locations
+    history button — c-trip.location-field), and External Trip Id.
+  • Map (top-right) — tripDetail() draws the route once both place ids are set;
+    a No-Preview overlay covers it until then. Inputs + map share one x-data
+    scope (the grid sits inside the tripDetail root) though they're separate
+    cells.
+  • Service Details (bottom-left) — service / passengers / coupon / customer
+    notes. Layout-only where the current models carry no field yet.
+  • Driver (bottom-right) — Offered/Confirmed toggle, a searchable driver
+    combobox (driverPicker, seeded with the trip's driver), the driver phone,
+    and driver notes.
+
+The status select and Close/Update/Actions controls live in the drawer footer.
+-->
+<c-drawer title="Reservation: RES-{{ trip.hashid }}">
+    <div x-data="tripDetail()"
+         x-init="initRoute($el)"
+         data-maps-key="{{ GOOGLE_MAPS_API_KEY|default_if_none:'' }}"
+         data-origin="{{ trip.origin.address|default_if_none:'' }}"
+         data-origin-id="{{ trip.origin.id|default_if_none:'' }}"
+         data-destination="{{ trip.destination.address|default_if_none:'' }}"
+         data-destination-id="{{ trip.destination.id|default_if_none:'' }}"
+         class="grid grid-cols-1 items-start gap-x-8 gap-y-6 lg:grid-cols-2">
+        <!-- ===== Customer + Trip basics (top-left) ===== -->
+        <div class="flex flex-col gap-4">
+            <!-- Customer section -->
+            <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+                <legend class="fieldset-legend text-lg">Customer</legend>
+                <!-- Name + phone -->
+                <div>
+                    <a class="link link-primary text-xl font-semibold">{{ trip.rider.account.first_name }} {{ trip.rider.account.last_name }}</a>
+                    {% if trip.rider.account.phone %}
+                        <div class="mt-1">
+                            <a href="tel:{{ trip.rider.account.phone }}"
+                               class="link link-primary inline-flex items-center gap-1.5 text-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                     viewBox="0 0 24 24"
+                                     fill="currentColor"
+                                     class="size-4">
+                                    <path d="M1.5 4.5a3 3 0 0 1 3-3h1.372c.86 0 1.61.586 1.819 1.42l1.105 4.423a1.875 1.875 0 0 1-.694 1.955l-1.293.97c-.135.101-.164.249-.126.352a11.285 11.285 0 0 0 6.697 6.697c.103.038.25.009.352-.126l.97-1.293a1.875 1.875 0 0 1 1.955-.694l4.423 1.105c.834.209 1.42.959 1.42 1.82V19.5a3 3 0 0 1-3 3h-2.25C8.552 22.5 1.5 15.448 1.5 6.75V4.5Z" />
+                                </svg>
+                                {{ trip.rider.account.phone }}
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+                <!-- Booking Agent (layout-only) -->
+                <div>
+                    <div class="text-sm text-base-content/60">Booking Agent</div>
+                    <a class="link link-primary font-medium">+ Add Agent</a>
+                </div>
+            </fieldset>
+            <!-- Trip Details section -->
+            <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+                <legend class="fieldset-legend text-lg">Trip Details</legend>
+                <!-- Pickup Date/Time: Cally date + 12-hour time spinner -> hidden `date`. -->
+                <c-trip.datetime-field name="date" label="Pickup Date/Time" required initial="{% if trip.date %}{{ trip.date|localtime|date:'Y-m-d\TH:i' }}{% endif %}" timezone="America/Edmonton" />
+                <!-- Pickup Location + Destination: Google Places autocomplete, each
+               with a Recent-locations history button (c-trip.location-field). Picks
+               land in the hidden origin_* / destination_* inputs the Update reads. -->
+                <div class="flex flex-col gap-3">
+                    <c-trip.location-field field="origin" label="Pickup Location" required placeholder="Enter a start address" :recent-pickups="recent_pickups" :recent-destinations="recent_destinations" />
+                    <c-trip.location-field field="destination" label="Destination" placeholder="Enter a destination address" :recent-pickups="recent_pickups" :recent-destinations="recent_destinations" />
+                    <!-- Hidden route inputs, filled by selectPrediction/selectHistory. -->
+                    {# djlint:off #}
+                    <input type="hidden" name="origin_id" x-model="originId" />
+                    <input type="hidden" name="origin_address" x-model="origin" />
+                    <input type="hidden" name="destination_id" x-model="destinationId" />
+                    <input type="hidden" name="destination_address" x-model="destination" />
+                    {# djlint:on #}
+                </div>
+                <!-- External Trip Id (layout-only; not persisted yet) -->
+                <div>
+                    <label class="label">
+                        <span class="label-text">External Trip Id</span>
+                    </label>
+                    <input type="text"
+                           name="trip_external_id"
+                           autocomplete="off"
+                           placeholder="External Trip Id"
+                           class="input w-full" />
+                </div>
+            </fieldset>
+        </div>
+        <!-- ===== Map / Route (top-right) ===== -->
+        <!-- tripDetail builds the map once Maps loads and draws the route as soon
+           as BOTH place ids are set; the No-Preview overlay (x-show) covers the
+           map until then. -->
+        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+            <legend class="fieldset-legend text-lg">Route</legend>
+            {# djlint:off #}
+            <div class="relative aspect-[5/4] w-full">
+                <div id="trip-map"
+                     class="absolute inset-0 overflow-hidden rounded-box border border-base-300"></div>
+                <div x-show="!(originId && destinationId)"
+                     class="absolute inset-0 z-10 flex items-center justify-center rounded-box border border-base-300 bg-base-200/70 backdrop-blur-sm">
+                    <span class="text-sm font-medium opacity-70">No Preview</span>
+                </div>
+            </div>
+            {# djlint:on #}
+        </fieldset>
+        <!-- ===== Service Details (bottom-left) ===== -->
+        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+            <legend class="fieldset-legend flex items-center gap-2 text-lg">
+                <c-icons.settings class="size-5" />
+                Service Details
+            </legend>
+            <div>
+                <label class="label">
+                    <span class="label-text">Pick A Service</span>
+                </label>
+                <select class="select select-bordered w-full">
+                    <option selected>EDMONTON and ALBERTA Wheelchair services</option>
+                    <option>Personal</option>
+                    <option>Grey Nuns Hospital</option>
+                    <option>Sturgeon Hospital</option>
+                </select>
+            </div>
+            <div>
+                <label class="label">
+                    <span class="label-text">Passengers</span>
+                </label>
+                <input type="number"
+                       min="1"
+                       value="{{ trip.seated_count|default:1 }}"
+                       class="input w-full" />
+            </div>
+            <div>
+                <label class="label">
+                    <span class="label-text">Coupon Code</span>
+                </label>
+                <input type="text"
+                       autocomplete="off"
+                       placeholder="Enter coupon code"
+                       class="input w-full" />
+            </div>
+            <div>
+                <label class="label">
+                    <span class="label-text">Customer's Notes</span>
+                </label>
+                <textarea class="textarea rounded-box h-24 w-full"
+                          placeholder="Visible to dispatchers, drivers, and customers">{{ trip.customer_notes|default:'' }}</textarea>
+            </div>
+        </fieldset>
+        <!-- ===== Driver (bottom-right) ===== -->
+        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+            <legend class="fieldset-legend flex items-center gap-2 text-lg">
+                <c-icons.driver class="size-5" />
+                Driver
+            </legend>
+            <!-- Offered / Confirmed toggle (layout-only) -->
+            {# djlint:off #}
+            <div class="join self-end" x-data="{ confirmed: true }">
+                <button type="button" class="btn join-item" :class="confirmed ? 'btn-ghost border border-base-300' : 'btn-active'" @click="confirmed = false">Offered</button>
+                <button type="button" class="btn join-item" :class="confirmed ? 'btn-success' : 'btn-ghost border border-base-300'" @click="confirmed = true">Confirmed</button>
+            </div>
+            {# djlint:on #}
+            <!-- Searchable driver combobox, seeded with the trip's driver. -->
+            <div>
+                <label class="label">
+                    <span class="label-text">Pick A Driver</span>
+                </label>
+                {# djlint:off #}
+                <div class="relative"
+                     x-data="driverPicker()"
+                     x-init="seed($el.dataset)"
+                     data-driver-id="{{ trip.driver.pk }}"
+                     data-driver-label="{{ trip.driver.account.first_name }} {{ trip.driver.account.last_name }}"
+                     data-driver-phone="{{ trip.driver.account.phone|default:'' }}">
+                    <input type="hidden" name="driver" x-model="driverId" />
+                    <label class="input input-bordered flex w-full items-center gap-2">
+                        <input type="text"
+                               class="grow"
+                               autocomplete="off"
+                               placeholder="Search drivers by name, email or phone..."
+                               x-model="q"
+                               @focus="open = true"
+                               @input="open = true; driverId = ''"
+                               @click.outside="open = false" />
+                        <button type="button" x-show="q" @click="clearDriver()" aria-label="Clear driver" class="opacity-50 hover:opacity-100">
+                            <c-icons.close class="size-4" />
+                        </button>
+                        <c-icons.caret_down class="h-[1em] opacity-50" />
+                    </label>
+                    <ul x-show="open"
+                        x-cloak
+                        class="menu absolute z-20 mt-2 max-h-64 w-full flex-nowrap overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg">
+                        {% for d in drivers %}
+                            <li data-name="{{ d.account.first_name }} {{ d.account.last_name }}"
+                                data-email="{{ d.account.email }}"
+                                data-phone="{{ d.account.phone|default:'' }}"
+                                x-show="matches($el)">
+                                <a @click="select('{{ d.pk }}', '{{ d.account.first_name|escapejs }} {{ d.account.last_name|escapejs }}', '{{ d.account.phone|escapejs }}')">
+                                    <span class="flex flex-col items-start">
+                                        <span class="font-medium">{{ d.account.first_name }} {{ d.account.last_name }}</span>
+                                        <span class="text-xs opacity-60">D-{{ d.account.id }} · {{ d.account.email }}</span>
+                                    </span>
+                                </a>
+                            </li>
+                        {% endfor %}
+                        <li x-show="!anyVisible()" class="px-3 py-2 text-sm opacity-60">No drivers found</li>
+                    </ul>
+                    <!-- Driver phone -->
+                    <a class="link link-primary mt-3 inline-flex items-center gap-1.5 text-sm" :href="phone ? 'tel:' + phone : '#'" x-show="phone">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-4"><path d="M1.5 4.5a3 3 0 0 1 3-3h1.372c.86 0 1.61.586 1.819 1.42l1.105 4.423a1.875 1.875 0 0 1-.694 1.955l-1.293.97c-.135.101-.164.249-.126.352a11.285 11.285 0 0 0 6.697 6.697c.103.038.25.009.352-.126l.97-1.293a1.875 1.875 0 0 1 1.955-.694l4.423 1.105c.834.209 1.42.959 1.42 1.82V19.5a3 3 0 0 1-3 3h-2.25C8.552 22.5 1.5 15.448 1.5 6.75V4.5Z" /></svg>
+                        <span x-text="phone"></span>
+                    </a>
+                </div>
+                {# djlint:on #}
+            </div>
+            <!-- Driver's Notes (visible to dispatchers + drivers; tinted) -->
+            <div>
+                <label class="label">
+                    <span class="label-text">Driver's Notes</span>
+                </label>
+                <textarea class="textarea rounded-box h-36 w-full border-warning/40 bg-warning/15"
+                          placeholder="Only visible to dispatchers and drivers">{{ trip.driver_notes|default:'' }}</textarea>
+            </div>
+        </fieldset>
+    </div>
+    <c-slot name="footer_actions">
+        <!-- Status select (pushed left; Close/Update/Actions stay right) -->
+        <select class="select mr-auto !w-40">
+            {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if trip.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        {# djlint:off #}
+        <button class="btn btn-md !bg-amber-400" @click="$dispatch('close-drawer')">Close</button>
+        {# djlint:on #}
+        <button class="btn btn-md !bg-green-400">Update</button>
+        <div class="dropdown dropdown-top dropdown-end">
+            <div tabindex="0" role="button" class="btn btn-md bg-base-100">Actions</div>
+            <ul tabindex="0"
+                class="dropdown-content menu bg-base-100 rounded-box z-1 mb-3 min-w-max whitespace-nowrap p-2 shadow-md">
+                <li>
+                    <a>Get Quote</a>
+                </li>
+                <li>
+                    <a>Book Return Trip</a>
+                </li>
+                <li class="text-red-600">
+                    <a>Delete Ride</a>
+                </li>
+            </ul>
+        </div>
+    </c-slot>
+    {# djlint:off #}
+    <script>
+        // Route state mirrored into hidden inputs, plus the Map Preview. Seeded
+        // from the root data-* attributes (the trip's saved origin/destination)
+        // so the map draws immediately. Based on trip_new's tripForm, with the
+        // saved-value seeding + selectHistory (Recent locations) added.
+        function tripDetail() {
+            return {
+                origin: '',
+                originId: '',
+                destination: '',
+                destinationId: '',
+                originPreds: [],
+                destinationPreds: [],
+                showOrigin: false,
+                showDestination: false,
+                autocompleteService: null,
+                map: null,
+                directionsService: null,
+                directionsRenderer: null,
+                initRoute(root) {
+                    // Seed the saved trip values before Maps loads.
+                    this.origin = root?.dataset?.origin || '';
+                    this.originId = root?.dataset?.originId || '';
+                    this.destination = root?.dataset?.destination || '';
+                    this.destinationId = root?.dataset?.destinationId || '';
+                    const key = (root?.dataset?.mapsKey || window.GOOGLE_MAPS_API_KEY || '').trim();
+                    const ready = () => {
+                        this.autocompleteService = new google.maps.places.AutocompleteService();
+                        this.initMap();
+                    };
+                    if (window.google?.maps?.places) {
+                        ready();
+                        return;
+                    }
+                    const id = 'google-maps-js';
+                    const existing = document.getElementById(id);
+                    if (existing) {
+                        existing.addEventListener('load', ready, { once: true });
+                        return;
+                    }
+                    const s = document.createElement('script');
+                    s.id = id;
+                    s.async = true;
+                    s.defer = true;
+                    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+                    s.onload = ready;
+                    document.head.appendChild(s);
+                },
+                // Resolve once `el` has a real on-screen box (or after ~tries frames
+                // as a backstop) — the drawer fires show-drawer AFTER htmx swaps this
+                // in, so a 0-size map at init would render wrong.
+                waitForSize(el, tries = 120) {
+                    return new Promise((resolve) => {
+                        const check = (n) => {
+                            if (!el.isConnected || n <= 0 || (el.offsetWidth > 0 && el.offsetHeight > 0)) {
+                                resolve();
+                            } else {
+                                requestAnimationFrame(() => check(n - 1));
+                            }
+                        };
+                        check(tries);
+                    });
+                },
+                async initMap() {
+                    const el = this.$root?.querySelector('#trip-map');
+                    if (!el || this.map) return;
+                    await this.waitForSize(el);
+                    let ColorScheme;
+                    try {
+                        ({ ColorScheme } = await google.maps.importLibrary('core'));
+                    } catch (e) {
+                        console.warn('Failed to import google.maps ColorScheme; using default.', e);
+                    }
+                    this.map = new google.maps.Map(el, {
+                        center: { lat: 53.5461, lng: -113.4938 },
+                        zoom: 12,
+                        mapTypeControl: false,
+                        streetViewControl: false,
+                        fullscreenControl: false,
+                        ...(ColorScheme ? { colorScheme: this.colorScheme(ColorScheme) } : {}),
+                    });
+                    this.directionsService = new google.maps.DirectionsService();
+                    this.directionsRenderer = new google.maps.DirectionsRenderer({ map: this.map });
+                    // Draw straight away in case both ends are already chosen.
+                    this.drawRoute();
+                },
+                colorScheme(ColorScheme) {
+                    const root = document.documentElement;
+                    const theme = root?.dataset?.theme || '';
+                    if (theme) return theme.toLowerCase().includes('dark') ? ColorScheme.DARK : ColorScheme.LIGHT;
+                    if (root?.classList?.contains('dark')) return ColorScheme.DARK;
+                    return ColorScheme.FOLLOW_SYSTEM ?? ColorScheme.LIGHT;
+                },
+                // Render the route when both ends are picked; clear it otherwise so
+                // the No-Preview overlay (x-show) lines up with a blank map.
+                drawRoute() {
+                    if (!this.map || !this.directionsService || !this.directionsRenderer) return;
+                    if (!(this.originId && this.destinationId)) {
+                        this.directionsRenderer.set('directions', null);
+                        return;
+                    }
+                    this.directionsService.route({
+                        origin: { placeId: this.originId },
+                        destination: { placeId: this.destinationId },
+                        travelMode: google.maps.TravelMode.DRIVING,
+                    }, (res, status) => {
+                        if (status === 'OK') this.directionsRenderer.setDirections(res);
+                        else console.warn('Directions request failed:', status);
+                    });
+                },
+                fetchPredictions(field) {
+                    const text = field === 'origin' ? this.origin : this.destination;
+                    const listKey = field === 'origin' ? 'originPreds' : 'destinationPreds';
+                    const showKey = field === 'origin' ? 'showOrigin' : 'showDestination';
+                    const idKey = field === 'origin' ? 'originId' : 'destinationId';
+                    // Typing invalidates a previously picked place id until re-picked,
+                    // which clears the preview back to No-Preview.
+                    this[idKey] = '';
+                    this.drawRoute();
+                    if (!text || !this.autocompleteService) {
+                        this[listKey] = [];
+                        this[showKey] = false;
+                        return;
+                    }
+                    this.autocompleteService.getPlacePredictions({ input: text }, (preds, status) => {
+                        if (status === google.maps.places.PlacesServiceStatus.OK && preds) {
+                            this[listKey] = preds;
+                            this[showKey] = preds.length > 0;
+                        } else {
+                            this[listKey] = [];
+                            this[showKey] = false;
+                        }
+                    });
+                },
+                selectPrediction(field, pred) {
+                    if (field === 'origin') {
+                        this.origin = pred.description;
+                        this.originId = pred.place_id;
+                        this.showOrigin = false;
+                    } else {
+                        this.destination = pred.description;
+                        this.destinationId = pred.place_id;
+                        this.showDestination = false;
+                    }
+                    this.drawRoute();
+                },
+                // Fill a field from a Recent-locations pick (address + place id),
+                // then redraw the route.
+                selectHistory(field, address, placeId) {
+                    if (field === 'origin') {
+                        this.origin = address;
+                        this.originId = placeId;
+                        this.showOrigin = false;
+                    } else {
+                        this.destination = address;
+                        this.destinationId = placeId;
+                        this.showDestination = false;
+                    }
+                    this.drawRoute();
+                },
+            };
+        }
+
+        // Searchable driver combobox, seeded with the trip's current driver. Rows
+        // are server-rendered with data-* hints; matches() filters by typed query,
+        // select() copies the row's id/label/phone into the field.
+        function driverPicker() {
+            const hay = (el) => [el.dataset.name || '', el.dataset.email || '', el.dataset.phone || ''].join(' ').toLowerCase();
+            return {
+                open: false,
+                q: '',
+                driverId: '',
+                phone: '',
+                seed(d) {
+                    this.driverId = d.driverId || '';
+                    this.q = (d.driverLabel || '').trim();
+                    this.phone = d.driverPhone || '';
+                },
+                select(id, label, phone) {
+                    this.driverId = id;
+                    this.q = label;
+                    this.phone = phone || '';
+                    this.open = false;
+                },
+                clearDriver() {
+                    this.driverId = '';
+                    this.q = '';
+                    this.phone = '';
+                    this.open = true;
+                },
+                matches(el) {
+                    const q = (this.q || '').trim().toLowerCase();
+                    return !q || hay(el).includes(q);
+                },
+                anyVisible() {
+                    const rows = Array.from(this.$root.querySelectorAll('li[data-name]'));
+                    if (!rows.length) return false;
+                    const q = (this.q || '').trim().toLowerCase();
+                    return !q || rows.some((el) => hay(el).includes(q));
+                },
+            };
+        }
+</script>
+    {# djlint:on #}
+</c-drawer>

@@ -1,0 +1,120 @@
+{% extends "django_tables2/table.html" %}
+{% load django_tables2 i18n %}
+<!--
+The trips table body. Extends django-tables2's base table template and fully
+overrides thead/tbody so each row is laid out by hand (rider card, time,
+pick-up/drop-off, driver + status). Rendered two ways, both via render_table:
+
+  - inside trips/pages/trips.html on a full page / nav swap, and
+  - on its own by the `trips_htmx_table` filter endpoint, which swaps just this
+    fragment back into #trips_table as the filter bar changes.
+
+The rider's T-hashid button opens the one shared trip drawer (owned by core) via
+the c-trip-drawer-button core component: it takes the trip hashid and wraps all
+the drawer wiring (the core_trip_drawer URL, the #trip_drawer_content target), so
+this table never names a trip URL or the drawer container itself.
+-->
+{% block table.thead %}
+    {% if table.show_header %}
+        <thead>
+            <tr>
+                <th>
+                    <div class="w-60 flex items-center gap-3.5">
+                        <input type="checkbox" class="checkbox" />
+                        <div class="truncate w-32">Rider and Trip ID</div>
+                    </div>
+                </th>
+                <td>Time</td>
+                <td>Driver and Trip Status</td>
+                <td>Pick-up Location</td>
+                <td>Drop-off Location</td>
+            </tr>
+        </thead>
+    {% endif %}
+{% endblock table.thead %}
+{% block table.tbody %}
+    <tbody>
+        {% for row in table.rows %}
+            {% with trip=row.record %}
+                <tr class="hover:bg-base-200">
+                    <th>
+                        <div class="w-60 flex items-center gap-3">
+                            <input type="checkbox" class="checkbox" />
+                            <div class="avatar skeleton">
+                                <div class="mask mask-squircle h-12 w-12">
+                                    <img src="{{ trip.rider.account.avatar_src }}" alt="Rider Avatar" width="48" height="48" />
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                <div class="truncate font-medium w-32">{{ trip.rider }}</div>
+                                <!-- Target the shell's drawer explicitly (the
+                                   canonical trigger pattern). The
+                                   detail view also sends HX-Retarget as a backstop,
+                                   but relying on it alone let the detail swap into
+                                   this button/row when the rows were re-rendered by
+                                   the filter — making the row "expand to fill the
+                                   whole thing". -->
+                                <c-trip-drawer-button trip_id="{{ trip.hashid }}"
+                                                      class="btn btn-soft truncate w-fit font-mono uppercase font-normal px-2">
+                                    <div class="truncate">T-{{ trip.hashid }}</div>
+                                </c-trip-drawer-button>
+                            </div>
+                        </div>
+                    </th>
+                    <td>
+                        <div class="flex flex-col w-30">
+                            <div>
+                                {% if trip.date %}
+                                    {{ trip.date|date:"g:i A" }}
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </div>
+                            <div>
+                                {% if trip.date %}
+                                    {{ trip.date|date:"F j, Y" }}
+                                {% else %}
+                                    No date
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="w-50 flex items-center gap-3">
+                            <div class="avatar skeleton">
+                                <div class="mask mask-squircle h-12 w-12">
+                                    <img src="{{ trip.driver.account.avatar_src }}"
+                                         alt="Driver Avatar"
+                                         width="48"
+                                         height="48" />
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                <div class="truncate font-medium w-32">{{ trip.driver }}</div>
+                                {% with s=trip.status %}
+                                    <div class="py-1 px-2 rounded-3xl w-fit capitalize {% if s == 'canceled' %} bg-red-300{% elif s == 'completed' %} bg-green-300 {% elif s == 'scheduled' %} bg-purple-200 {% elif s == 'in_progress' %} bg-yellow-100 {% else %} bg-base-300 {% endif %}">
+                                        {{ trip.get_status_display }}
+                                    </div>
+                                {% endwith %}
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="flex flex-col w-60">
+                            <div class="truncate font-medium">{{ trip.origin.street }}</div>
+                            <div class="truncate">{{ trip.origin.locality }}</div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="flex flex-col w-60">
+                            <div class="truncate font-medium">{{ trip.destination.street }}</div>
+                            <div class="truncate">{{ trip.destination.locality }}</div>
+                        </div>
+                    </td>
+                </tr>
+            {% endwith %}
+        {% endfor %}
+    </tbody>
+{% endblock table.tbody %}
+{% block pagination %}
+{% endblock pagination %}

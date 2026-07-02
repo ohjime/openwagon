@@ -1,0 +1,26 @@
+<!--
+Per-page header actions. Drop one group per nav key inside the nav_actions block
+of an app's base; only the group whose key matches the active page is shown.
+
+    c-dashboard.nav-actions key="trips"
+        button class="btn btn-primary" — c-icons.add — New Trip
+    /c-dashboard.nav-actions
+
+It rides the navbar's existing active-key state: the `actions` slot is rendered
+inside the navbar's Alpine root, so `isActive(key)` here is the SAME source of
+truth that lights the sidebar item and builds the breadcrumb. That means it just
+works on a cold load (server seeds `activeKey`) and after every htmx nav swap
+(nav:active moves it) — no view changes, no extra events, no OOB swaps.
+
+`key` must match the `key=` on the matching c-dashboard.nav-item /
+c-dashboard.nav-child and the `key=` the page's nav_response passes. A page
+whose key matches no group (e.g. home) simply shows none.
+-->
+<c-vars key="" />
+{# djlint:off #}
+<div x-show="isActive('{{ key }}')"
+     x-cloak
+     class="flex flex-row items-center gap-4">
+    {{ slot }}
+</div>
+{# djlint:on #}

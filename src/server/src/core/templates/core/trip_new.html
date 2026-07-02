@@ -1,0 +1,467 @@
+<!--
+New-trip creation drawer body — the SECOND body the one shared drawer can hold
+(the first is core/trip_detail.html). Rendered by core.views.new_trip, which
+retargets this into trip_drawer_content and fires show-drawer to slide the
+shell's base drawer open.
+
+It CREATES a trip (posts to core_trip_create). Sections sit in a 2-col grid on
+md+ (one per slot): Client Details, Trip Details, Driver Details, Map Preview.
+
+  • Client Details — a live search over existing customers (riderPicker) that
+    fills the fields on pick; phone + first/last name + email are always collected
+    (email is the unique key; a guest with no Firebase uid gets a synthesized G-
+    uid in the view). Phone Ext / External Id render to match the layout but are
+    not persisted yet (no model fields).
+  • Trip Details — Pickup Date/Time is a date (Cally) + a 12-hour time spinner
+    (dateTimePicker) combined into the hidden `date` input the view parses;
+    Pickup Location + Destination are inline Google Places autocompletes that fill
+    the hidden origin_* / destination_* inputs (tripForm); External Trip Id is
+    layout-only for now.
+  • Driver Details — a searchable combobox over DB drivers (driverPicker).
+  • Map Preview — tripForm builds a Google map and draws the route once both
+    pickup + destination place ids are set; a No-Preview overlay covers it until
+    then.
+
+CSRF is added to the htmx POST by the global handler in dashboard/base.html.
+-->
+<c-drawer title="New Trip">
+    <form id="trip_new_form"
+          hx-post="{% url 'core_trip_create' %}"
+          hx-swap="none"
+          x-data="tripForm()"
+          x-init="initRoute($el)"
+          data-maps-key="{{ GOOGLE_MAPS_API_KEY|default_if_none:'' }}"
+          class="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+        {% if error %}
+            <div role="alert" class="alert alert-error md:col-span-2">
+                <span>{{ error }}</span>
+            </div>
+        {% endif %}
+        <!-- ===== Client Details ===== -->
+        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4"
+                  x-data="riderPicker()"
+                  x-init="seed($el.dataset)"
+                  data-first="{{ form_data.first_name|default:'' }}"
+                  data-last="{{ form_data.last_name|default:'' }}"
+                  data-phone="{{ form_data.phone|default:'' }}"
+                  data-phone-ext="{{ form_data.phone_ext|default:'' }}"
+                  data-email="{{ form_data.email|default:'' }}"
+                  data-external-id="{{ form_data.external_id|default:'' }}">
+            <legend class="fieldset-legend text-lg">Client Details</legend>
+            <!-- Existing-customer search: filters the riders list as you type;
+               picking one fills the fields below (name / phone / email). -->
+            {# djlint:off #}
+            <div class="relative">
+                <label class="input input-bordered flex w-full items-center gap-2">
+                    <c-icons.search class="h-[1em] opacity-50" />
+                    <input type="text"
+                           class="grow"
+                           autocomplete="off"
+                           placeholder="Search for an existing customer here..."
+                           x-model="q"
+                           @focus="open = true"
+                           @input="open = true"
+                           @click.outside="open = false" />
+                    <c-icons.caret_down class="h-[1em] opacity-50" />
+                </label>
+                <ul x-show="open && hasMatches()"
+                    x-cloak
+                    x-transition.opacity
+                    class="menu absolute z-30 mt-1 max-h-72 w-full flex-nowrap overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg">
+                    {% for r in riders %}
+                        <li data-name="{{ r.account.first_name }} {{ r.account.last_name }}"
+                            data-first="{{ r.account.first_name }}"
+                            data-last="{{ r.account.last_name }}"
+                            data-phone="{{ r.account.phone|default:'' }}"
+                            data-email="{{ r.account.email|default:'' }}"
+                            x-show="matches($el)">
+                            <a class="flex flex-col items-start gap-0.5" @click="select($el.closest('li'))">
+                                <span class="text-base font-medium">{{ r.account.first_name }} {{ r.account.last_name }}</span>
+                                <span class="text-sm opacity-80">Phone: {{ r.account.phone|default:"None provided" }}</span>
+                                <span class="text-sm opacity-80">Email: {% if r.account.email %}{{ r.account.email }}{% else %}<em>None provided</em>{% endif %}</span>
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {# djlint:on #}
+            <!-- Phone (required, with country code) + Phone Ext -->
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div class="sm:col-span-2">
+                    <label class="label">
+                        <span class="label-text">Phone <span class="text-error">*</span></span>
+                    </label>
+                    {# djlint:off #}
+                    <div class="join w-full">
+                        <select class="select join-item w-fit" aria-label="Country code">
+                            <option selected>🇨🇦 +1</option>
+                            <option>🇺🇸 +1</option>
+                            <option>🇬🇧 +44</option>
+                            <option>🇦🇺 +61</option>
+                        </select>
+                        <input type="tel"
+                               name="phone"
+                               required
+                               autocomplete="off"
+                               placeholder="(506) 234-5678"
+                               class="input join-item w-full"
+                               x-model="phone" />
+                    </div>
+                    {# djlint:on #}
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text">Phone Ext</span>
+                    </label>
+                    {# djlint:off #}
+                    <input type="text" name="phone_ext" autocomplete="off" class="input w-full" x-model="phoneExt" />
+                    {# djlint:on #}
+                </div>
+            </div>
+            <!-- First / Last name (required) -->
+            <label class="label">
+                <span class="label-text">First Name <span class="text-error">*</span></span>
+            </label>
+            {# djlint:off #}
+            <input type="text" name="first_name" required autocomplete="off" placeholder="First Name" class="input w-full" x-model="firstName" />
+            {# djlint:on #}
+            <label class="label">
+                <span class="label-text">Last Name <span class="text-error">*</span></span>
+            </label>
+            {# djlint:off #}
+            <input type="text" name="last_name" required autocomplete="off" placeholder="Last Name" class="input w-full" x-model="lastName" />
+            {# djlint:on #}
+            <!-- External Id (layout-only; not persisted yet) -->
+            <label class="label">
+                <span class="label-text">External Id</span>
+            </label>
+            {# djlint:off #}
+            <input type="text" name="external_id" autocomplete="off" placeholder="External ID" class="input w-full" x-model="externalId" />
+            {# djlint:on #}
+            <!-- Email (required, the unique rider key) -->
+            <label class="label">
+                <span class="label-text">Email <span class="text-error">*</span></span>
+            </label>
+            {# djlint:off #}
+            <input type="email" name="email" required autocomplete="off" placeholder="example@domain.com" class="input w-full" x-model="email" />
+            {# djlint:on #}
+        </fieldset>
+        <!-- ===== Trip Details ===== -->
+        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+            <legend class="fieldset-legend text-lg">Trip Details</legend>
+            <!-- Pickup Date/Time: Cally date + 12-hour time spinner -> hidden `date`. -->
+            <c-trip.datetime-field name="date" label="Pickup Date/Time" required />
+            <!-- Pickup Location + Destination: Google Places autocomplete, each with
+               a Recent-locations history button (c-trip.location-field). The resolved
+               address + place id land in the hidden origin_* / destination_* inputs
+               below (tripForm.selectPrediction / selectHistory). -->
+            <c-trip.location-field field="origin" label="Pickup Location" required placeholder="Enter a start address" :recent-pickups="recent_pickups" :recent-destinations="recent_destinations" />
+            <c-trip.location-field field="destination" label="Destination" placeholder="Enter a destination address" :recent-pickups="recent_pickups" :recent-destinations="recent_destinations" />
+            <!-- Hidden route inputs, filled by selectPrediction / selectHistory. -->
+            {# djlint:off #}
+            <input type="hidden" name="origin_id" x-model="originId" />
+            <input type="hidden" name="origin_address" x-model="origin" />
+            <input type="hidden" name="destination_id" x-model="destinationId" />
+            <input type="hidden" name="destination_address" x-model="destination" />
+            {# djlint:on #}
+            <!-- External Trip Id (layout-only; not persisted yet) -->
+            <label class="label">
+                <span class="label-text">External Trip Id</span>
+            </label>
+            <input type="text"
+                   name="trip_external_id"
+                   autocomplete="off"
+                   class="input w-full"
+                   value="{{ form_data.trip_external_id|default:'' }}" />
+        </fieldset>
+        <!-- ===== Driver Details ===== -->
+        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+            <legend class="fieldset-legend text-lg">Driver Details</legend>
+            {# djlint:off #}
+            <div class="relative" x-data="driverPicker()">
+                <input type="hidden" name="driver" x-model="driverId" required />
+                <label class="input input-bordered flex w-full items-center gap-2">
+                    <c-icons.search class="h-[1em] opacity-50" />
+                    <input type="text"
+                           class="grow"
+                           autocomplete="off"
+                           placeholder="Search drivers by name, email or phone..."
+                           x-model="q"
+                           @focus="open = true"
+                           @input="open = true; driverId = ''"
+                           @click.outside="open = false" />
+                </label>
+                <ul x-show="open"
+                    x-cloak
+                    class="menu absolute z-20 mt-2 max-h-64 w-full flex-nowrap overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg">
+                    {% for d in drivers %}
+                        <li data-name="{{ d.account.first_name }} {{ d.account.last_name }}"
+                            data-email="{{ d.account.email }}"
+                            data-phone="{{ d.account.phone|default:'' }}"
+                            x-show="matches($el)">
+                            <a @click="select('{{ d.pk }}', '{{ d.account.first_name|escapejs }} {{ d.account.last_name|escapejs }} (D-{{ d.account.id }})')">
+                                <span class="flex flex-col items-start">
+                                    <span class="font-medium">{{ d.account.first_name }} {{ d.account.last_name }}</span>
+                                    <span class="text-xs opacity-60">D-{{ d.account.id }} · {{ d.account.email }}</span>
+                                </span>
+                            </a>
+                        </li>
+                    {% endfor %}
+                    <li x-show="!anyVisible()" class="px-3 py-2 text-sm opacity-60">No drivers found</li>
+                </ul>
+            </div>
+            {# djlint:on #}
+        </fieldset>
+        <!-- ===== Map Preview ===== -->
+        <!-- Live route preview. tripForm builds the map once Maps loads and draws
+           the route as soon as BOTH pickup + destination place ids are set; the
+           No-Preview overlay (x-show) covers the map until then. -->
+        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
+            <legend class="fieldset-legend text-lg">Map Preview</legend>
+            {# djlint:off #}
+            <div class="relative mt-2 aspect-video w-full">
+                <div id="trip-map"
+                     class="absolute inset-0 overflow-hidden rounded-box border border-base-300"></div>
+                <div x-show="!(originId && destinationId)"
+                     class="absolute inset-0 z-10 flex items-center justify-center rounded-box border border-base-300 bg-base-200/70 backdrop-blur-sm">
+                    <span class="text-sm font-medium opacity-70">No Preview</span>
+                </div>
+            </div>
+            {# djlint:on #}
+        </fieldset>
+    </form>
+    <c-slot name="footer_actions">
+        <button type="submit" form="trip_new_form" class="btn btn-md !bg-green-400">Create Trip</button>
+    </c-slot>
+    {# djlint:off #}
+    <script>
+        // Form-level state: the resolved route, mirrored into hidden inputs.
+        // Self-contained Google Places autocomplete + a Map Preview that draws the
+        // route once both pickup + destination place ids are set. Picks fill the
+        // hidden origin_* / destination_* inputs the create view reads.
+        function tripForm() {
+            return {
+                origin: '',
+                originId: '',
+                destination: '',
+                destinationId: '',
+                originPreds: [],
+                destinationPreds: [],
+                showOrigin: false,
+                showDestination: false,
+                autocompleteService: null,
+                map: null,
+                directionsService: null,
+                directionsRenderer: null,
+                initRoute(root) {
+                    const key = (root?.dataset?.mapsKey || window.GOOGLE_MAPS_API_KEY || '').trim();
+                    const ready = () => {
+                        this.autocompleteService = new google.maps.places.AutocompleteService();
+                        this.initMap();
+                    };
+                    if (window.google?.maps?.places) {
+                        ready();
+                        return;
+                    }
+                    const id = 'google-maps-js';
+                    const existing = document.getElementById(id);
+                    if (existing) {
+                        existing.addEventListener('load', ready, { once: true });
+                        return;
+                    }
+                    const s = document.createElement('script');
+                    s.id = id;
+                    s.async = true;
+                    s.defer = true;
+                    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+                    s.onload = ready;
+                    document.head.appendChild(s);
+                },
+                // Resolve once `el` has a real on-screen box (or after ~tries frames
+                // as a backstop) — the drawer fires show-drawer AFTER htmx swaps this
+                // in, so a 0-size map at init would render wrong.
+                waitForSize(el, tries = 120) {
+                    return new Promise((resolve) => {
+                        const check = (n) => {
+                            if (!el.isConnected || n <= 0 || (el.offsetWidth > 0 && el.offsetHeight > 0)) {
+                                resolve();
+                            } else {
+                                requestAnimationFrame(() => check(n - 1));
+                            }
+                        };
+                        check(tries);
+                    });
+                },
+                async initMap() {
+                    const el = this.$root?.querySelector('#trip-map');
+                    if (!el || this.map) return;
+                    await this.waitForSize(el);
+                    let ColorScheme;
+                    try {
+                        ({ ColorScheme } = await google.maps.importLibrary('core'));
+                    } catch (e) {
+                        console.warn('Failed to import google.maps ColorScheme; using default.', e);
+                    }
+                    this.map = new google.maps.Map(el, {
+                        center: { lat: 53.5461, lng: -113.4938 },
+                        zoom: 12,
+                        mapTypeControl: false,
+                        streetViewControl: false,
+                        fullscreenControl: false,
+                        ...(ColorScheme ? { colorScheme: this.colorScheme(ColorScheme) } : {}),
+                    });
+                    this.directionsService = new google.maps.DirectionsService();
+                    this.directionsRenderer = new google.maps.DirectionsRenderer({ map: this.map });
+                    // Draw straight away in case both ends are already chosen.
+                    this.drawRoute();
+                },
+                colorScheme(ColorScheme) {
+                    const root = document.documentElement;
+                    const theme = root?.dataset?.theme || '';
+                    if (theme) return theme.toLowerCase().includes('dark') ? ColorScheme.DARK : ColorScheme.LIGHT;
+                    if (root?.classList?.contains('dark')) return ColorScheme.DARK;
+                    return ColorScheme.FOLLOW_SYSTEM ?? ColorScheme.LIGHT;
+                },
+                // Render the route when both ends are picked; clear it otherwise so
+                // the No-Preview overlay (x-show) lines up with a blank map.
+                drawRoute() {
+                    if (!this.map || !this.directionsService || !this.directionsRenderer) return;
+                    if (!(this.originId && this.destinationId)) {
+                        this.directionsRenderer.set('directions', null);
+                        return;
+                    }
+                    this.directionsService.route({
+                        origin: { placeId: this.originId },
+                        destination: { placeId: this.destinationId },
+                        travelMode: google.maps.TravelMode.DRIVING,
+                    }, (res, status) => {
+                        if (status === 'OK') this.directionsRenderer.setDirections(res);
+                        else console.warn('Directions request failed:', status);
+                    });
+                },
+                fetchPredictions(field) {
+                    const text = field === 'origin' ? this.origin : this.destination;
+                    const listKey = field === 'origin' ? 'originPreds' : 'destinationPreds';
+                    const showKey = field === 'origin' ? 'showOrigin' : 'showDestination';
+                    const idKey = field === 'origin' ? 'originId' : 'destinationId';
+                    // Typing invalidates a previously picked place id until re-picked,
+                    // which clears the preview back to No-Preview.
+                    this[idKey] = '';
+                    this.drawRoute();
+                    if (!text || !this.autocompleteService) {
+                        this[listKey] = [];
+                        this[showKey] = false;
+                        return;
+                    }
+                    this.autocompleteService.getPlacePredictions({ input: text }, (preds, status) => {
+                        if (status === google.maps.places.PlacesServiceStatus.OK && preds) {
+                            this[listKey] = preds;
+                            this[showKey] = preds.length > 0;
+                        } else {
+                            this[listKey] = [];
+                            this[showKey] = false;
+                        }
+                    });
+                },
+                selectPrediction(field, pred) {
+                    if (field === 'origin') {
+                        this.origin = pred.description;
+                        this.originId = pred.place_id;
+                        this.showOrigin = false;
+                    } else {
+                        this.destination = pred.description;
+                        this.destinationId = pred.place_id;
+                        this.showDestination = false;
+                    }
+                    this.drawRoute();
+                },
+                // Fill a field from a Recent-locations pick (address + place id).
+                selectHistory(field, address, placeId) {
+                    if (field === 'origin') {
+                        this.origin = address;
+                        this.originId = placeId;
+                        this.showOrigin = false;
+                    } else {
+                        this.destination = address;
+                        this.destinationId = placeId;
+                        this.showDestination = false;
+                    }
+                    this.drawRoute();
+                },
+            };
+        }
+
+        // Existing-customer search + the rider fields it fills. Rows are
+        // server-rendered with data-* hints; matches() filters by typed query,
+        // select() copies the row into the fields below.
+        function riderPicker() {
+            const hay = (li) => [li.dataset.name, li.dataset.phone, li.dataset.email].join(' ').toLowerCase();
+            return {
+                open: false,
+                q: '',
+                firstName: '',
+                lastName: '',
+                phone: '',
+                phoneExt: '',
+                email: '',
+                externalId: '',
+                seed(d) {
+                    // Restore typed values on an error re-render (data-* set by
+                    // the view from the rejected POST), so input isn't lost.
+                    this.firstName = d.first || '';
+                    this.lastName = d.last || '';
+                    this.phone = d.phone || '';
+                    this.phoneExt = d.phoneExt || '';
+                    this.email = d.email || '';
+                    this.externalId = d.externalId || '';
+                },
+                matches(li) {
+                    const q = (this.q || '').trim().toLowerCase();
+                    return !q || hay(li).includes(q);
+                },
+                hasMatches() {
+                    const rows = Array.from(this.$root.querySelectorAll('li[data-name]'));
+                    if (!rows.length) return false;
+                    const q = (this.q || '').trim().toLowerCase();
+                    return !q || rows.some((li) => hay(li).includes(q));
+                },
+                select(li) {
+                    const d = li.dataset;
+                    this.firstName = d.first || '';
+                    this.lastName = d.last || '';
+                    this.phone = d.phone || '';
+                    this.email = d.email || '';
+                    // phoneExt / externalId aren't carried on existing riders.
+                    this.q = `${d.first || ''} ${d.last || ''}`.trim();
+                    this.open = false;
+                },
+            };
+        }
+
+        // Searchable driver combobox.
+        function driverPicker() {
+            const hay = (el) => [el.dataset.name || '', el.dataset.email || '', el.dataset.phone || ''].join(' ').toLowerCase();
+            return {
+                open: false,
+                q: '',
+                driverId: '',
+                select(id, label) {
+                    this.driverId = id;
+                    this.q = label;
+                    this.open = false;
+                },
+                matches(el) {
+                    const q = (this.q || '').trim().toLowerCase();
+                    return !q || hay(el).includes(q);
+                },
+                anyVisible() {
+                    const rows = Array.from(this.$root.querySelectorAll('li[data-name]'));
+                    if (!rows.length) return false;
+                    const q = (this.q || '').trim().toLowerCase();
+                    return !q || rows.some((el) => hay(el).includes(q));
+                },
+            };
+        }
+</script>
+    {# djlint:on #}
+</c-drawer>

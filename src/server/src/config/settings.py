@@ -146,9 +146,18 @@ INSTALLED_APPS = [
     "anymail",
     "corsheaders",
     # Local apps.
+    # `core` is the standalone foundation every app builds on: models and the
+    # dashboard shell — base template + components + helpers (core/dashboard.py).
+    # It references no app.
     "core",
-    "dashboard",
-    "shell",
+    # `app` is the concrete application: it owns the django-ninja API and the
+    # dispatcher dashboard. Features are top-level apps (no nesting inside `app`):
+    # `trips`, `drivers` and `riders` each ship a table/filters/detail content
+    # module (no shell of their own) that `app` loads into its dispatcher shell.
+    "app",
+    "trips",
+    "drivers",
+    "riders",
 ]
 
 MIDDLEWARE = [

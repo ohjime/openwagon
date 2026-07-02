@@ -1,0 +1,63 @@
+<!--
+Trips main-content page. Rendered by nav_response(request,
+"trips/pages/trips.html", {"table": table}): swapped into #app_content on an
+htmx nav click, or embedded in the full shell on a direct visit. Same template
+and context either way.
+
+Layout (ported from the old core/trips list): a filter bar on top of a scrolling
+table panel. The filter bar (c-trips.trip-filter) issues its own htmx GETs to
+`trips_table` and swaps the result into #trips_table, so only the rows refresh
+while this page shell stays mounted.
+-->
+{% load render_table from django_tables2 %}
+<!--
+Shared filter state. The date (c-trips.date-filter), search and status
+(c-trips.trip-filter) components each write into this one Alpine store and
+call apply(), so every change rebuilds a single combined query and swaps the
+result into #trips_table. Registered here — the single host of both filter
+components, and where the htmx endpoint URL resolves. Runs on both a full page
+load (alpine:init) and an htmx nav swap (script re-executed, Alpine already up).
+-->
+{# djlint:off #}
+<script>
+    (function() {
+        const register = () => {
+            window.Alpine.store('tripFilter', {
+                date: '',
+                status: null,
+                search: '',
+                endpoint: '{% url "trips_htmx_table" %}',
+                target: '#trips_table',
+                apply() {
+                    const params = new URLSearchParams();
+                    if (this.search && this.search.trim().length) params.append('search', this.search.trim());
+                    if (this.date && this.date.trim().length) params.append('date', this.date.trim());
+                    if (this.status && this.status.trim().length) params.append('status', this.status.trim());
+                    const target = document.querySelector(this.target);
+                    if (!target) return;
+                    window.htmx.ajax('GET', this.endpoint + '?' + params.toString(), {
+                        target,
+                        swap: 'innerHTML',
+                        indicator: '.htmx-indicator',
+                    });
+                },
+            });
+        };
+        if (window.Alpine && window.Alpine.store) register();
+        else document.addEventListener('alpine:init', register);
+    })();
+</script>
+{# djlint:on #}
+<!-- x-data makes this an Alpine root so @trip-created (fired by core.create_trip's
+   HX-Trigger after a new trip is made) re-runs the shared tripFilter store's
+   apply(), refreshing #trips_table with the new row. -->
+<div class="flex h-full flex-col items-center gap-6 px-6 py-6"
+     x-data
+     @trip-created.window="$store.tripFilter.apply()">
+    <div class="w-full">
+        <c-trips.trip-filter />
+    </div>
+    <div class="flex-1 w-full overflow-hidden rounded-xl outline-2 outline-base-300 px-2 pb-2">
+        <div id="trips_table" class="h-full overflow-x-auto object-contain">{% render_table table %}</div>
+    </div>
+</div>

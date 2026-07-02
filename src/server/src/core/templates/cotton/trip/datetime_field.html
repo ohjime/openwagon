@@ -1,0 +1,148 @@
+<!--
+Pickup Date/Time field — c-trip.datetime-field. A Cally date picker (fills the
+remaining row width) + a 12-hour time spinner (HH up/down : MM up/down  AM/PM),
+combined into ONE hidden input (`name`, format YYYY-MM-DDTHH:MM) that the trip
+create/update views parse.
+
+Self-contained: owns its Alpine scope (dateTimePicker) and the hidden input, so
+both trip drawers (trip_new, trip_detail) drop in a single tag. Seeded from
+`initial` (a "Y-m-dTH:i" string — the saved trip date), falling back to now when
+empty.
+
+Usage:
+  c-trip.datetime-field name="date" label="Pickup Date/Time" required
+    initial="2026-06-29T18:09" timezone="America/Edmonton"
+-->
+<c-vars name="date" label="Pickup Date/Time" required="" initial="" timezone="" />
+<div>
+    <label class="label">
+        <span class="label-text">{{ label }}
+            {% if required %}<span class="text-error">*</span>{% endif %}
+        </span>
+    </label>
+    {# djlint:off #}
+    <div x-data="dateTimePicker()"
+         x-init="init()"
+         data-initial="{{ initial }}"
+         class="flex flex-wrap items-center gap-3 -my-4">
+        <input type="hidden" name="{{ name }}" :value="value" />
+        <!-- Date display + Cally dropdown (grows to fill the remaining width) -->
+        <div class="relative min-w-48 flex-1">
+            <button type="button"
+                    class="input input-bordered flex w-full items-center justify-start text-lg font-normal"
+                    @click="showCal = !showCal"
+                    x-text="formattedDate"></button>
+            <div x-show="showCal"
+                 x-cloak
+                 x-transition.opacity
+                 @click.outside="showCal = false"
+                 class="absolute left-0 top-full z-30 mt-1">
+                <calendar-date class="cally rounded-box border border-base-300 bg-base-100 p-2 shadow-lg" :value="ymd" @change="onCal($event)" @input="onCal($event)">
+                    <svg aria-label="Previous" class="size-4 fill-current" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
+                    <svg aria-label="Next" class="size-4 fill-current" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
+                    <calendar-month></calendar-month>
+                </calendar-date>
+            </div>
+        </div>
+        <!-- 12-hour time spinner: HH up/down : MM up/down  AM/PM -->
+        <div class="flex shrink-0 items-center gap-1.5">
+            <div class="flex flex-col items-center gap-1">
+                <button type="button" class="btn btn-circle btn-ghost btn-sm text-primary" @click="bumpHour(1)" aria-label="Hour up">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5"></path></svg>
+                </button>
+                <div class="flex w-12 items-center justify-center rounded-lg border border-base-300 py-1.5 text-lg" x-text="pad(hour12)"></div>
+                <button type="button" class="btn btn-circle btn-ghost btn-sm text-primary" @click="bumpHour(-1)" aria-label="Hour down">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                </button>
+            </div>
+            <span class="text-lg">:</span>
+            <div class="flex flex-col items-center gap-1">
+                <button type="button" class="btn btn-circle btn-ghost btn-sm text-primary" @click="bumpMinute(1)" aria-label="Minute up">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5"></path></svg>
+                </button>
+                <div class="flex w-12 items-center justify-center rounded-lg border border-base-300 py-1.5 text-lg" x-text="pad(minute)"></div>
+                <button type="button" class="btn btn-circle btn-ghost btn-sm text-primary" @click="bumpMinute(-1)" aria-label="Minute down">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                </button>
+            </div>
+            <button type="button" class="btn btn-outline" @click="toggleMeridiem()" x-text="meridiem"></button>
+        </div>
+    </div>
+    <script>
+        // Pickup date (Cally) + 12-hour time spinner -> hidden input value
+        // (YYYY-MM-DDTHH:MM). Seeded from data-initial (the trip's saved date),
+        // falling back to now.
+        function dateTimePicker() {
+            return {
+                showCal: false,
+                ymd: '',
+                hour12: 12,
+                minute: 0,
+                meridiem: 'AM',
+                init() {
+                    const seed = (this.$root?.dataset?.initial || '').trim();
+                    if (seed) {
+                        const [datePart, timePart] = seed.split('T');
+                        this.ymd = datePart;
+                        const [hh, mm] = (timePart || '00:00').split(':').map(Number);
+                        this.meridiem = hh >= 12 ? 'PM' : 'AM';
+                        this.hour12 = (hh % 12) || 12;
+                        this.minute = mm || 0;
+                        return;
+                    }
+                    const now = new Date();
+                    this.ymd = this.toYmd(now);
+                    const h = now.getHours();
+                    this.meridiem = h >= 12 ? 'PM' : 'AM';
+                    this.hour12 = (h % 12) || 12;
+                    this.minute = now.getMinutes();
+                },
+                toYmd(d) {
+                    const off = d.getTimezoneOffset() * 60000;
+                    return new Date(d.getTime() - off).toISOString().slice(0, 10);
+                },
+                pad(n) {
+                    return String(n).padStart(2, '0');
+                },
+                get formattedDate() {
+                    if (!this.ymd) return 'Select date';
+                    const [y, m, dd] = this.ymd.split('-').map(Number);
+                    return new Date(y, m - 1, dd).toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                    });
+                },
+                bumpHour(step) {
+                    let h = this.hour12 + step;
+                    if (h > 12) h = 1;
+                    if (h < 1) h = 12;
+                    this.hour12 = h;
+                },
+                bumpMinute(step) {
+                    let m = this.minute + step;
+                    if (m > 59) m = 0;
+                    if (m < 0) m = 59;
+                    this.minute = m;
+                },
+                toggleMeridiem() {
+                    this.meridiem = this.meridiem === 'AM' ? 'PM' : 'AM';
+                },
+                onCal(e) {
+                    const v = (e && e.target && e.target.value) || (e && e.detail && e.detail.value);
+                    if (v) {
+                        this.ymd = v;
+                        this.showCal = false;
+                    }
+                },
+                get value() {
+                    if (!this.ymd) return '';
+                    let h = this.hour12 % 12;
+                    if (this.meridiem === 'PM') h += 12;
+                    return `${this.ymd}T${this.pad(h)}:${this.pad(this.minute)}`;
+                },
+            };
+        }
+</script>
+    {# djlint:on #}
+</div>

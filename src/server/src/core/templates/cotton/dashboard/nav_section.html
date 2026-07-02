@@ -1,0 +1,66 @@
+<!--
+An expandable menu button for the sidebar: an icon + name that toggles a nested
+accordion of c-dashboard.nav-child links. Collapsed to the icon rail it shows only the
+icon; the children animate open (CSS grid-rows 0fr→1fr) once the sidebar is
+expanded (hover/pin/mobile) AND the section is opened.
+
+    c-dashboard.nav-section name="People"
+        c-slot name="icon" — path d="…"
+        c-dashboard.nav-child label="Riders"  url="/riders/"  target="#content" — path d="…"
+        c-dashboard.nav-child label="Drivers" url="/drivers/" target="#content" — path d="…"
+    /c-dashboard.nav-section
+
+`section` overrides the temp-state key (defaults to `name`). The key lives on the
+li, so every child resolves up to it via closest() — selecting any child counts
+as selecting this whole section, so the section stays collapsed while you hover
+it or its children after a pick.
+
+A directly-visited URL whose page lives in this section starts EXPANDED: `open`
+is seeded from sectionActive($el), so the active child is already revealed when
+the rail opens. (On htmx clicks the navbar isn't re-rendered, so this only kicks
+in on full loads / history restores — exactly the "typed the URL" case.)
+-->
+<c-vars name="" section="" />
+<li x-data="{ open: sectionActive($el) }"
+    data-nav-section="{{ section|default:name }}"
+    data-nav-name="{{ name }}">
+    {# djlint:off #}
+    <button type="button"
+            @click="open = !open"
+            @mouseenter="itemEnter($el)"
+            @mouseleave="itemLeave()"
+            :aria-expanded="open"
+            :class="sectionActive($el.closest('[data-nav-section]')) ? 'bg-base-200/60 text-base-content font-semibold' : ''"
+            class="mx-1 flex w-[calc(100%-0.5rem)] cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-color duration-200 hover:bg-base-200 hover:text-base-content">
+        <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg [&_svg]:size-full">
+            <!-- The icon is a full c-icons.* component dropped in via the `icon`
+               slot; with none supplied it falls back to a generic folder icon. -->
+            {% if icon %}{{ icon }}{% else %}<c-icons.folder />{% endif %}
+        </span>
+        <span class="flex min-w-0 flex-1 items-center gap-2 transition-opacity delay-75 duration-200"
+              :class="hoverDrawer || toggleDrawer || mobileOpen ? 'opacity-100' : 'w-0 opacity-0'">
+            <span class="min-w-0 truncate text-left">{{ name }}</span>
+            <!-- Active indicator: a soft (round-joined) left arrowhead right after the section name, shown only while the rail is open -->
+            <c-icons.caret-left class="h-4 w-4 flex-shrink-0 text-primary"
+                                x-show="sectionActive($el.closest('[data-nav-section]')) && (hoverDrawer || toggleDrawer || mobileOpen)"
+                                x-cloak />
+        </span>
+        <!-- x-bind:class (not the :class shorthand) so django-cotton forwards it
+           verbatim instead of treating the colon as a dynamic-attribute prefix. -->
+        <c-icons.caret-down class="h-5 w-5 flex-shrink-0 transition-transform duration-200"
+                            x-show="hoverDrawer || toggleDrawer || mobileOpen"
+                            x-cloak
+                            x-bind:class="open ? 'rotate-180' : ''" />
+    </button>
+    {# djlint:on #}
+    <!-- Accordion: animate grid-template-rows 0fr→1fr. Stays closed while the rail
+         is collapsed, so the icon rail never shows children. -->
+    {# djlint:off #}
+    <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+         :class="open && (hoverDrawer || toggleDrawer || mobileOpen) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
+        <ul class="flex min-h-0 flex-col gap-2 overflow-hidden ps-3 pt-2">
+            {{ slot }}
+        </ul>
+    </div>
+    {# djlint:on #}
+</li>

@@ -7,7 +7,20 @@ from sqids import Sqids
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.urls import reverse
-from config.db import BaseModel
+
+
+class BaseModel(models.Model):
+    """Abstract base with created/updated timestamps, shared by app/feature
+    models. Lives in core (moved here from the old config.db) so any model can
+    reuse it without depending on the project's config package — keeping core
+    the foundation everything builds on, never the other way around."""
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-updated_at"]
 
 
 class User(AbstractUser):
@@ -32,6 +45,22 @@ class Account(models.Model):
         if not self.phone:
             self.phone = None
         super().save(*args, **kwargs)
+
+    @property
+    def avatar_src(self) -> str:
+        """What to render in an <img src>: the real photo if the account has one,
+        otherwise a DiceBear glyph generated on the fly from the email.
+
+        Mobile/Firebase users upload a photo at signup (stored in `avatar`), so
+        they keep theirs. Dispatch-created guests never sign up and arrive with
+        no photo — they get a stable, unique generated avatar instead. Templates
+        render this, never `avatar` directly."""
+        if self.avatar:
+            return self.avatar
+        # Local import avoids loading the dicebear style at model-import time.
+        from core.utils import generate_avatar
+
+        return generate_avatar(self.email)
 
     def __str__(self):
         return self.email
@@ -69,6 +98,25 @@ class TripStatus(models.TextChoices):
     canceled = "canceled", _("Canceled")
 
 
+# Trip-status groupings shared by the drivers/riders feature tables and filters
+# (a single source of truth so "open" and "on trip" mean the same thing in every
+# annotation). These are plain lists of TripStatus values — no DB field, no
+# migration. "Open" = the trip is still in flight (anything not completed or
+# canceled); "On trip" = the driver/rider is actively in a vehicle right now.
+OPEN_TRIP_STATUSES = [
+    TripStatus.scheduled,
+    TripStatus.assigned,
+    TripStatus.enroute,
+    TripStatus.arrived,
+    TripStatus.in_progress,
+]
+ONTRIP_TRIP_STATUSES = [
+    TripStatus.enroute,
+    TripStatus.arrived,
+    TripStatus.in_progress,
+]
+
+
 DEFAULT_LOCATION_POINT = Point(-104.9903, 39.7392)
 
 
@@ -79,6 +127,17 @@ class Place(BaseModel):
 
     def __str__(self) -> str:
         return self.address
+
+    @property
+    def street(self) -> str:
+        """The street address: everything before the first comma."""
+        return self.address.split(",", 1)[0].strip()
+
+    @property
+    def locality(self) -> str:
+        """The rest of the address (city, region, postal) after the first comma."""
+        parts = self.address.split(",", 1)
+        return parts[1].strip() if len(parts) > 1 else ""
 
 
 class Trip(models.Model):
@@ -98,6 +157,24 @@ class Trip(models.Model):
         default=TripStatus.scheduled,
     )
 
+    class Meta:
+        # Composite indexes for the Recent-locations history query
+        # (core.views._recent_places): group a trip end by place, keyed by the
+        # latest date. The rider-scoped pair backs the per-customer history shown
+        # on an existing trip; the place+date pair backs the global history on the
+        # New Trip form. The <field>-then-date column order lets Postgres satisfy
+        # the GROUP BY + Max(date) sort straight from the index.
+        indexes = [
+            models.Index(
+                fields=["rider", "origin", "date"], name="trip_rider_origin_dt_idx"
+            ),
+            models.Index(
+                fields=["rider", "destination", "date"], name="trip_rider_dest_dt_idx"
+            ),
+            models.Index(fields=["origin", "date"], name="trip_origin_dt_idx"),
+            models.Index(fields=["destination", "date"], name="trip_dest_dt_idx"),
+        ]
+
     def save(self, *args, **kwargs):
         is_new = self.pk is None
         super().save(*args, **kwargs)
@@ -110,8 +187,8 @@ class Trip(models.Model):
             self.hashid = encoded
 
     def get_absolute_url(self):
-        """This is used by the table to generate a link to the trip detail page."""
-        return reverse("trip_detail", kwargs={"pk": self.pk})
+        """Link to the shared trip detail drawer endpoint (core), keyed by hashid."""
+        return reverse("core_trip_drawer", kwargs={"hashid": self.hashid})
 
     def clean(self):
         if self.driver.account.uid == self.rider.account.uid:

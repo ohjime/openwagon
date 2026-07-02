@@ -1,0 +1,39 @@
+<!--
+A child link inside a c-dashboard.nav-section. Same icon + label shape as c-dashboard.nav-item
+but smaller/indented. It deliberately has NO data-nav-section of its own, so it
+resolves (via closest) to its parent section's key — selecting a child counts as
+selecting the whole section for the press-to-collapse behaviour.
+
+    c-dashboard.nav-child label="New Trip" key="trips" url="/trips/" target="#content"
+        path d="…"
+    /c-dashboard.nav-child
+
+`url` + `target` wire an htmx innerHTML swap; omit `target` for a plain link.
+
+`key` ties this child to the active-page indicator. When it's the active page
+both the child AND its parent section light up + show a dot — the parent picks
+this up from data-nav-key via the navbar's sectionActive(); the child is only
+visible once the section is expanded.
+-->
+<c-vars label="" url="#" target="" key="" />
+<li data-nav-key="{{ key }}" data-nav-label="{{ label }}">
+    {# djlint:off #}
+    <a {% if target %}hx-get="{{ url }}" hx-target="{{ target }}" hx-swap="innerHTML"{% else %}href="{{ url }}"{% endif %}
+       @click="selectItem($el)"
+       @mouseenter="itemEnter($el)"
+       @mouseleave="itemLeave()"
+       :class="isActive('{{ key }}') ? 'bg-base-200/60 text-base-content font-semibold' : ''"
+       class="flex h-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-color duration-200 hover:bg-base-200 hover:text-base-content">
+        <span class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg [&_svg]:size-full">
+            <!-- The icon is a full c-icons.* component dropped in by the caller. -->
+            {{ slot }}
+        </span>
+        <span class="flex-shrink-0 truncate transition-opacity delay-75 duration-200"
+              :class="hoverDrawer || toggleDrawer || mobileOpen ? 'opacity-100' : 'opacity-0'">{{ label }}</span>
+        <!-- Active indicator: a soft (round-joined) left arrowhead right after the label, shown only while the section is expanded -->
+        <c-icons.caret-left class="h-4 w-4 flex-shrink-0 text-primary"
+                            x-show="isActive('{{ key }}') && (hoverDrawer || toggleDrawer || mobileOpen)"
+                            x-cloak />
+    </a>
+    {# djlint:on #}
+</li>

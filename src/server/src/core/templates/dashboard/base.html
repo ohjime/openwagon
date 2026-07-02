@@ -1,0 +1,304 @@
+{% load django_vite %}
+{% load django_htmx %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <!-- Fixed per feature: the Dashboard instance supplies dashboard_name +
+           site_name, so the tab title is the same on every page of a feature
+           (no per-page override, no JS title juggling). -->
+        <title>{{ dashboard_name|default:"Dashboard" }} | {{ site_name|default:"Waygon" }}</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="X-UA-Compatible" content="ie=edge">
+        <meta name="description" content="A Django project using Tailwind CSS.">
+        <meta name="htmx-config" content='{"globalViewTransitions": false}'>
+        {# djlint:off #}
+        <style>
+            /* Loader base layout */
+            #page-loader {
+                position: fixed;
+                inset: 0;
+                z-index: 9999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: opacity 0.3s, background-color 0.3s, color 0.3s;
+                /* Fallback (will be immediately overridden by media queries in supporting browsers) */
+                background: #2a303c;
+                color: #d1d5db;
+            }
+
+            /* Spinner element inside loader (rotating color variant) */
+            .loader {
+                --c: no-repeat linear-gradient(orange 0 0);
+                background: var(--c), var(--c), var(--c), var(--c), var(--c), var(--c),
+                    var(--c), var(--c), var(--c);
+                background-size: 16px 16px;
+                animation: l32-1 1s infinite, l32-2 1s infinite;
+            }
+
+            @keyframes l32-1 {
+
+                0%,
+                100% {
+                    width: 45px;
+                    height: 45px;
+                }
+
+                35%,
+                65% {
+                    width: 65px;
+                    height: 65px;
+                }
+            }
+
+            @keyframes l32-2 {
+
+                0%,
+                40% {
+                    background-position: 0 0, 0 50%, 0 100%, 50% 100%, 100% 100%, 100% 50%,
+                        100% 0, 50% 0, 50% 50%;
+                }
+
+                60%,
+                100% {
+                    background-position: 0 50%, 0 100%, 50% 100%, 100% 100%, 100% 50%,
+                        100% 0, 50% 0, 0 0, 50% 50%;
+                }
+            }
+
+            /* Light mode (system preference) */
+            @media (prefers-color-scheme: light) {
+                #page-loader {
+                    background: #f3f4f6;
+                    color: #374151;
+                }
+            }
+
+            /* Dark mode (system preference) */
+            @media (prefers-color-scheme: dark) {
+                #page-loader {
+                    background: #1f2733;
+                    color: #d1d5db;
+                }
+            }
+
+            /* High contrast / forced colors (optional accessibility tweak) */
+            @media (forced-colors: active) {
+                #page-loader {
+                    background: Canvas;
+                    color: CanvasText;
+                }
+            }
+</style>
+        {# djlint:on #}
+        {# djlint:off #}
+        <script>
+            // Force scroll to top on page load (prevents browser scroll restoration)
+            if ('scrollRestoration' in history) {
+                history.scrollRestoration = 'manual';
+            }
+            window.scrollTo(0, 0);
+
+            function hideLoader() {
+                var loader = document.getElementById("page-loader");
+                if (!loader) return;
+                loader.style.opacity = "0";
+                setTimeout(function() { loader.style.display = "none"; }, 300);
+            }
+
+            window.addEventListener("DOMContentLoaded", function() {
+                window.scrollTo(0, 0);
+                setTimeout(hideLoader, 600); // Show loader for at least 600ms on a cold load
+            });
+
+            // Back/forward with hx-history swaps the whole <body> back in — loader
+            // markup included — but does NOT re-fire DOMContentLoaded, so the
+            // one-shot hide above never runs and the spinner hangs. Hide it the
+            // moment htmx finishes restoring; `pageshow` covers bfcache restores.
+            document.addEventListener("htmx:historyRestore", hideLoader);
+            window.addEventListener("pageshow", function(e) { if (e.persisted) hideLoader(); });
+
+            // Reset scroll position before unload (for refresh button)
+            window.addEventListener("beforeunload", function() {
+                window.scrollTo(0, 0);
+            });
+</script>
+        {# djlint:on #}
+        {# djlint:off #}
+        <style>
+            @keyframes fade-in {
+                from {
+                    opacity: 0;
+                }
+            }
+
+            @keyframes fade-out {
+                to {
+                    opacity: 0;
+                }
+            }
+
+            @keyframes slide-from-bottom {
+                from {
+                    transform: translateY(20px);
+                }
+            }
+
+            ::view-transition-old(root) {
+                animation: 200ms ease-out both fade-out;
+            }
+
+            ::view-transition-new(root) {
+                animation: 300ms ease-out both fade-in, 300ms ease-out both slide-from-bottom;
+            }
+</style>
+        {# djlint:on #}
+        {% vite_hmr_client %}
+        {% vite_asset 'assets/js/main.js' %}
+        {% django_htmx_script %}
+        {# djlint:off #}
+        <script>
+            // Attach the CSRF token to every htmx request so POST-backed drawer
+            // actions work without per-element wiring.
+            document.addEventListener('htmx:configRequest', (event) => {
+                const cookies = document.cookie.split(';');
+                for (const cookie of cookies) {
+                    const trimmed = cookie.trim();
+                    if (trimmed.startsWith('csrftoken=')) {
+                        event.detail.headers['X-CSRFToken'] = decodeURIComponent(
+                            trimmed.substring('csrftoken='.length));
+                        break;
+                    }
+                }
+            });
+</script>
+        {# djlint:on #}
+    </head>
+    <body class="font-sans" hx-history="false">
+        <!-- hx-history="false": skip htmx's localStorage DOM snapshots so back/
+           forward always re-fetch the URL from the server. nav_response serves
+           a complete, correctly-lit shell for any URL, so the server stays the
+           single source of truth and there are no stale-snapshot surprises. -->
+        {% csrf_token %}
+        <!-- Full-screen loader shown on initial page load; the head script
+             fades it out ~600ms after DOMContentLoaded (ported from cosound). -->
+        <div id="page-loader">
+            <div class="loader" role="status" aria-label="Loading"></div>
+        </div>
+        <!-- Single app-shell navbar (header + collapsing sidebar). Each link is
+             a real route handled by nav_response; `active` pre-lights the
+             current item on a cold load, and nav_response fires `nav:active` +
+             `nav:close` after each htmx swap so the indicator follows along. -->
+        <c-dashboard.navbar dashboard_name="{{ dashboard_name|default:'Dashboard' }}" active="{{ active_nav }}" content_id="app_content">
+            <!-- The header action button(s). Core ships an empty shell; an app
+               fills this by overriding the nav_actions block with whatever header
+               actions it wants (the dispatcher uses a single static + New menu).
+               Core never references an app's actions, and navbar.html if-guards on
+               the slot so the area is genuinely empty when an app supplies none.
+               NB: keep this comment OUTSIDE the slot — an HTML comment inside would
+               render as slot content and defeat that empty check.
+               See app/templates/app/base.html. -->
+            <c-slot name="actions">
+                {% block nav_actions %}
+                {% endblock nav_actions %}
+            </c-slot>
+            <c-slot name="nav_items">
+                <!-- The sidebar's nav entries. Core ships an empty shell; an app
+                   supplies its own routes by overriding the nav_items block
+                   with c-dashboard.nav-item / c-dashboard.nav-section /
+                   c-dashboard.nav-child — so core never references app URLs.
+                   See app/templates/app/base.html. -->
+                {% block nav_items %}
+                {% endblock nav_items %}
+            </c-slot>
+            {% block content %}
+                <!-- nav_response renders this base directly for a full-shell load and
+                   passes `content_template`, so the page lands pre-swapped inside
+                   #app_content. Static pages (home) override this block instead. -->
+                {% if content_template %}
+                    {% include content_template %}
+                {% endif %}
+            {% endblock content %}
+        </c-dashboard.navbar>
+        <!-- Trip drawer: panel stays mounted; core.views.show_trip swaps the trip
+             detail into #trip_drawer_content. This is the ONLY drawer in the app —
+             there is no generic drawer opener, so nothing else can populate it. -->
+        <div id="trip_drawer"
+             x-data="{ open: false }"
+             @show-drawer.window="open = true"
+             @close-drawer.window="open = false"
+             @keydown.escape.window="open = false">
+            <!-- Backdrop -->
+            {# djlint:off #}
+            <div x-show="open"
+                 x-transition.opacity
+                 class="fixed inset-0 z-[60] bg-black/50"
+                 @click="open = false"
+                 x-cloak>
+            </div>
+            {# djlint:on #}
+            <!-- Sliding panel -->
+            {# djlint:off #}
+            <aside x-show="open"
+                   x-cloak
+                   x-transition:enter="transform transition ease-in-out duration-300"
+                   x-transition:enter-start="translate-x-full"
+                   x-transition:enter-end="translate-x-0"
+                   x-transition:leave="transform transition ease-in-out duration-200"
+                   x-transition:leave-start="translate-x-0"
+                   x-transition:leave-end="translate-x-full"
+                   {# Width: full-bleed on small screens (w-full == screen width),
+                      capped at max-w-4xl (~56rem, ≈ double the old max-w-md) on
+                      desktop so it fills that width when there's room. #}
+                   class="fixed right-0 top-0 bottom-0 z-[70] flex w-full max-w-4xl flex-col border-l border-base-300 bg-base-100 shadow-2xl"
+                   aria-label="Drawer">
+                <div id="trip_drawer_content"
+                     class="flex flex-1 flex-col overflow-hidden">
+                    <!-- core.views.show_trip injects the trip detail here -->
+                </div>
+            </aside>
+            {# djlint:on #}
+        </div>
+        {# djlint:off #}
+        <style>
+            /* Lock the document to the viewport so only the inner content
+               section (#app_content / [overflow-auto]) scrolls. Without this the
+               whole window rubber-bands on macOS Chrome/Safari: the in-flow
+               <header> stretches/shifts during the elastic bounce while the
+               position:fixed <nav> stays pinned to the viewport, so the two
+               visibly desync on vertical and horizontal overscroll. */
+            html,
+            body {
+                height: 100%;
+                overflow: hidden;
+                overscroll-behavior: none;
+            }
+
+            [x-cloak] {
+                display: none !important;
+            }
+
+            /* Entrance animation for content swapped into #app_content. Targets
+               the swapped-in children directly, so the CSS animation re-runs
+               every time htmx inserts fresh markup — no wrapper, and neither the
+               view nor its template has to opt in. */
+            @keyframes content-enter-kf {
+                from {
+                    opacity: 0;
+                    transform: translateX(-10px);
+                }
+
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+
+            #app_content>* {
+                animation: content-enter-kf 220ms ease-out both;
+            }
+</style>
+        {# djlint:on #}
+    </body>
+</html>

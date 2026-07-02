@@ -1,0 +1,20 @@
+<!--
+Drivers main-content page. Rendered by nav_response(request,
+"drivers/pages/drivers.html", {"table": table}): swapped into #app_content on an
+htmx nav click, or embedded in the full shell on a direct visit. Same template
+and context either way.
+
+Layout mirrors the trips page: a filter bar on top of a scrolling table panel.
+The filter bar (c-drivers.driver-filter) issues its own htmx GETs to
+`drivers_htmx_table` and swaps the result into #drivers_table, so only the rows
+refresh while this page shell stays mounted.
+-->
+{% load render_table from django_tables2 %}
+<div class="flex h-full flex-col items-center gap-6 px-6 py-6">
+    <div class="w-full">
+        <c-drivers.driver-filter />
+    </div>
+    <div class="flex-1 w-full overflow-hidden rounded-xl outline-2 outline-base-300 px-2 pb-2">
+        <div id="drivers_table" class="h-full overflow-x-auto object-contain">{% render_table table %}</div>
+    </div>
+</div>

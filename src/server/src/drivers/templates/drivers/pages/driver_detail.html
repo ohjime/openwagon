@@ -1,0 +1,89 @@
+<!--
+Driver detail CONTENT page. Rendered by drivers.views.detail via
+core.dashboard.swap_content, which swaps it into #app_content — selecting a
+driver transitions the main content here (no drawer).
+
+"Back to Drivers" returns to the list via the feature's own drivers_htmx_index
+endpoint (never the host app's app_drivers URL — keeping drivers core-only). Each
+recent-trip row opens the ONE shared trip drawer via the c-trip-drawer-button
+core component, so this page reaches a trip without depending on the trips feature.
+-->
+<div class="mx-auto max-w-5xl space-y-6 px-6 py-6">
+    <!-- Back + heading -->
+    <div class="flex items-center gap-3">
+        <button class="btn btn-ghost btn-sm"
+                hx-get="{% url 'drivers_htmx_index' %}"
+                hx-target="#app_content"
+                hx-swap="innerHTML">
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 height="20px"
+                 viewBox="0 -960 960 960"
+                 width="20px"
+                 fill="currentColor">
+                <path d="M400-80 0-480l400-400 71 71-329 329 329 329-71 71Z" />
+            </svg>
+            Back to Drivers
+        </button>
+    </div>
+    <!-- Profile header -->
+    <div class="flex items-center gap-4 rounded-box border border-base-300 bg-base-100 p-5">
+        <div class="avatar">
+            <div class="h-20 w-20 rounded-full">
+                <img src="{{ driver.account.avatar_src }}" alt="Driver avatar" width="80" height="80" />
+            </div>
+        </div>
+        <div class="flex flex-col gap-1">
+            <div class="text-2xl font-bold">{{ driver.account.first_name }} {{ driver.account.last_name }}</div>
+            <div class="font-mono text-sm opacity-70">D-{{ driver.pk }}</div>
+            <div class="text-sm">{{ driver.account.email }}</div>
+            <div class="text-sm opacity-70">{{ driver.account.phone|default:"No phone on file" }}</div>
+        </div>
+        <div class="flex-1"></div>
+        <a href="{% url 'admin:core_driver_change' driver.pk %}"
+           class="btn btn-md bg-base-100">Edit in Admin</a>
+    </div>
+    <!-- Trip-count stats -->
+    <div class="stats stats-horizontal w-full border border-base-300 bg-base-100">
+        <div class="stat">
+            <div class="stat-title">Total Trips</div>
+            <div class="stat-value text-2xl">{{ stats.total }}</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Open</div>
+            <div class="stat-value text-2xl">{{ stats.open }}</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Completed</div>
+            <div class="stat-value text-2xl">{{ stats.completed }}</div>
+        </div>
+    </div>
+    <!-- Recent trips -->
+    <div>
+        <h4 class="mb-2 text-sm font-semibold uppercase opacity-70">Recent Trips</h4>
+        <div class="flex flex-col gap-2">
+            {% for trip in recent_trips %}
+                <!-- Opens the one shared trip drawer via the core component — it owns
+                   the URL + target, so this page only passes the trip hashid. -->
+                <c-trip-drawer-button trip_id="{{ trip.hashid }}"
+                                      class="flex w-full items-center justify-between gap-3 rounded-box border border-base-300 bg-base-100 p-3 text-left hover:bg-base-200">
+                    <div class="flex min-w-0 flex-col">
+                        <span class="font-medium">{{ trip.rider }}</span>
+                        <span class="truncate text-sm opacity-70">{{ trip.origin }} &rarr; {{ trip.destination }}</span>
+                    </div>
+                    <div class="flex flex-shrink-0 flex-col items-end gap-1">
+                        <span class="text-sm">
+                            {% if trip.date %}
+                                {{ trip.date|date:"M j, Y" }}
+                            {% else %}
+                                &mdash;
+                            {% endif %}
+                        </span>
+                        <span class="py-0.5 px-2 rounded-3xl text-xs capitalize {% if trip.status == 'canceled' %}bg-red-300{% elif trip.status == 'completed' %}bg-green-300{% elif trip.status == 'scheduled' %}bg-purple-200{% elif trip.status == 'in_progress' %}bg-yellow-100{% else %}bg-base-300{% endif %}">{{ trip.get_status_display }}</span>
+                    </div>
+                </c-trip-drawer-button>
+            {% empty %}
+                <div class="rounded-box border border-dashed border-base-300 p-6 text-center text-sm opacity-60">No trips yet.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

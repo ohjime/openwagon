@@ -1,0 +1,26 @@
+<!--
+Trip drawer trigger — c-trip-drawer-button trip_id="trip.hashid"…c-trip-drawer-button.
+
+The ONE button that opens the ONE shared trip drawer. It encapsulates the whole
+hx wiring — which core URL, which target, which swap — so callers never name
+`core_trip_drawer` or the drawer container themselves. The trips table and the
+drivers/riders detail pages just drop this component, pass the trip's hashid and
+whatever label/styling they want, and get a working trigger. That single core
+component is all a feature needs to open a trip, which is why none of them depend
+on each other.
+
+    c-trip-drawer-button trip_id="trip.hashid" class="btn btn-soft"
+        T-trip.hashid
+    c-trip-drawer-button
+
+`trip_id` is the trip's public hashid (the T-… id). Every other attribute (class,
+etc.) is forwarded to the underlying button via attrs; the default slot is
+the button's content.
+-->
+<c-vars trip_id="" />
+<button {{ attrs }}
+        hx-get="{% url 'core_trip_drawer' trip_id %}"
+        hx-target="#trip_drawer_content"
+        hx-swap="innerHTML">
+    {{ slot }}
+</button>
