@@ -1,0 +1,62 @@
+/* Sizing for GeoDjango's OpenLayers drawing widget (Zone.area in admin).
+
+   The stock Django admin sizes the map via `.dj_map {600x400}` in
+   admin/css/widgets.css, but unfold replaces the stock stylesheets entirely
+   (unfoldadmin/django-unfold#779, closed "not planned"), so without this the
+   map container renders 0x0 and only the "Delete all Features" link shows.
+   Shipped as the ZoneMapWidget's Media so it loads wherever the widget does. */
+.dj_map_wrapper {
+    float: none;
+    width: 100%;
+}
+
+.dj_map {
+    width: 100%;
+    height: 480px;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+}
+
+/* Place-search box injected above the map by core/static/core/zone_admin_map.js
+   so admins can jump to a city instead of hand-panning. */
+.zone-map-search {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.zone-map-search__input {
+    flex: 1 1 auto;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    background: #fff;
+    color: #111827;
+    font-size: 0.875rem;
+}
+
+.zone-map-search__button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    background: #f9fafb;
+    color: #111827;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.zone-map-search__button:hover {
+    background: #f3f4f6;
+}
+
+.zone-map-search__button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.zone-map-search__status {
+    color: #6b7280;
+    font-size: 0.8125rem;
+}

@@ -1,0 +1,19 @@
+/* Sizing for GeoDjango's OpenLayers point widget on the Vehicle admin
+   (Vehicle.last_location — see core.admin.VehicleLocationMapWidget).
+
+   unfold replaces the stock admin stylesheets that normally size `.dj_map`
+   (600x400 in admin/css/widgets.css), so without this the map container
+   renders 0x0 and only the "Delete all Features" link shows. Shipped as the
+   widget's Media so it loads wherever the widget does. Same rationale, in full,
+   as core/static/core/zone_admin_map.css. */
+.dj_map_wrapper {
+    float: none;
+    width: 100%;
+}
+
+.dj_map {
+    width: 100%;
+    height: 420px;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+}
