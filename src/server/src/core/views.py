@@ -1,13 +1,24 @@
 import json
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.db.models import Max
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from core.models import Account, Driver, Place, Rider, Trip, TripStatus
+from core.models import (
+    Account,
+    Driver,
+    Place,
+    Rider,
+    ServicePlan,
+    Trip,
+    TripStatus,
+    Vehicle,
+    Zone,
+)
 
 # Core owns exactly ONE drawer: the trip detail drawer. It is deliberately the
 # only thing in the whole app that opens the shell's base drawer (#trip_drawer) —
@@ -31,6 +42,20 @@ TRIP_SELECT_RELATED = (
 )
 
 
+def _trip_detail_context(trip, *, error=None):
+    """Context for core/trip_detail.html, shared by show_trip (open the
+    drawer) and update_trip's failure path (re-render it in place)."""
+    return {
+        "trip": trip,
+        "status_choices": TripStatus.choices,
+        "drivers": _drivers_qs(),
+        # The customer's own pickup/destination history for the history button.
+        "recent_pickups": _recent_places("origin", rider=trip.rider),
+        "recent_destinations": _recent_places("destination", rider=trip.rider),
+        "error": error,
+    }
+
+
 def show_trip(request, hashid):
     """Render the trip detail into the shell's base drawer and slide it open.
 
@@ -42,21 +67,23 @@ def show_trip(request, hashid):
     trip = get_object_or_404(
         Trip.objects.select_related(*TRIP_SELECT_RELATED), hashid=hashid
     )
-    response = render(
-        request,
-        "core/trip_detail.html",
-        {
-            "trip": trip,
-            "status_choices": TripStatus.choices,
-            "drivers": _drivers_qs(),
-            # The customer's own pickup/destination history for the history button.
-            "recent_pickups": _recent_places("origin", rider=trip.rider),
-            "recent_destinations": _recent_places("destination", rider=trip.rider),
-        },
-    )
+    response = render(request, "core/trip_detail.html", _trip_detail_context(trip))
     response["HX-Retarget"] = "#trip_drawer_content"
     response["HX-Reswap"] = "innerHTML"
     response["HX-Trigger-After-Swap"] = "show-drawer"
+    return response
+
+
+def _render_trip_detail(request, trip, *, error):
+    """Re-render the trip detail drawer body with a validation error — the
+    update_trip failure path. Same swap-into-drawer trick as
+    _render_new_trip, but the drawer is already open so there's no
+    show-drawer trigger to fire."""
+    response = render(
+        request, "core/trip_detail.html", _trip_detail_context(trip, error=error)
+    )
+    response["HX-Retarget"] = "#trip_drawer_content"
+    response["HX-Reswap"] = "innerHTML"
     return response
 
 
@@ -118,6 +145,42 @@ def _riders_qs():
     )
 
 
+def _default_zone():
+    """The zone trips are priced in. Until the PostGIS point-in-zone wiring
+    lands every trip is assumed in-zone, so this is simply the first (the
+    seeded "Default Zone") row."""
+    return Zone.objects.order_by("pk").first()
+
+
+def _available_plans(email=None):
+    """Service plans the New Trip form may offer for the rider identified by
+    email: the zone's default plan plus that rider's private plans. A blank or
+    unknown email (brand-new customer) gets just the defaults. Empty when no
+    zone exists yet (fresh DB before the seed migration)."""
+    zone = _default_zone()
+    if zone is None:
+        return ServicePlan.objects.none()
+    rider = None
+    if email:
+        rider = Rider.objects.filter(account__email=email).first()
+    return ServicePlan.available_to(rider, zone)
+
+
+def _plan_options_context(email=None, selected_raw=None):
+    """Context for the plan <option> list (core/plan_options.html): the plans
+    offered for this email, and which one to mark selected. A previous pick is
+    kept only while it's still in the offered set — switching to a rider who
+    can't use it falls back to the zone default (the template selects the
+    is_default row when selected_plan_id is None)."""
+    plans = list(_available_plans(email))
+    selected_id = (
+        int(selected_raw) if selected_raw and selected_raw.isdigit() else None
+    )
+    if selected_id not in {p.pk for p in plans}:
+        selected_id = None
+    return {"plans": plans, "selected_plan_id": selected_id}
+
+
 def _render_new_trip(request, *, error=None, form_data=None, open_drawer=False):
     """Render the New Trip form into #trip_drawer_content.
 
@@ -125,6 +188,7 @@ def _render_new_trip(request, *, error=None, form_data=None, open_drawer=False):
     create_trip validation-error path (open_drawer=False — the drawer is already
     open, so we just swap the form back in with the error and the user's input).
     """
+    form_data = form_data or {}
     response = render(
         request,
         "core/trip_new.html",
@@ -138,6 +202,13 @@ def _render_new_trip(request, *, error=None, form_data=None, open_drawer=False):
             # shows the most-recent locations across all trips.
             "recent_pickups": _recent_places("origin"),
             "recent_destinations": _recent_places("destination"),
+            # Service-plan dropdown. On the error re-render the rejected POST's
+            # email/plan keep the dispatcher's picks; on a fresh form both are
+            # blank and the zone default is offered/selected.
+            **_plan_options_context(
+                email=(form_data.get("email") or "").strip() or None,
+                selected_raw=(form_data.get("service_plan") or "").strip(),
+            ),
         },
     )
     response["HX-Retarget"] = "#trip_drawer_content"
@@ -150,6 +221,24 @@ def _render_new_trip(request, *, error=None, form_data=None, open_drawer=False):
 def new_trip(request):
     """Render the empty New Trip form into the drawer and slide it open."""
     return _render_new_trip(request, open_drawer=True)
+
+
+def trip_plans(request):
+    """Re-render the New Trip form's service-plan <option>s (htmx GET).
+
+    Fired when an existing customer is picked (the rider-picked event
+    riderPicker.select dispatches — programmatic field fills emit no change
+    event) or when the email field is edited by hand. Blank/unknown email
+    offers just the zone defaults, so a brand-new customer sees exactly the
+    open plans."""
+    return render(
+        request,
+        "core/plan_options.html",
+        _plan_options_context(
+            email=request.GET.get("email", "").strip() or None,
+            selected_raw=request.GET.get("service_plan", "").strip(),
+        ),
+    )
 
 
 def create_trip(request):
@@ -168,10 +257,10 @@ def create_trip(request):
     destination_id = post.get("destination_id", "").strip()
     destination_address = post.get("destination_address", "").strip()
 
-    # Validate up front. The driver field is a hidden input, and browsers skip
-    # constraint validation on hidden inputs, so its `required` can't enforce a
-    # pick client-side — this is the real guard. Email is the unique rider key;
-    # phone is always collected too.
+    # Validate up front. Email is the unique rider key; phone is always
+    # collected too. A driver is optional — a trip can be booked before a
+    # driver is picked (Trip.driver is nullable) — but if one was picked, it
+    # must actually resolve to a real Driver.
     if not (first_name and last_name and email and phone):
         return _render_new_trip(
             request,
@@ -179,9 +268,9 @@ def create_trip(request):
             form_data=post,
         )
     driver = _drivers_qs().filter(pk=driver_id).first() if driver_id else None
-    if driver is None:
+    if driver_id and driver is None:
         return _render_new_trip(
-            request, error="Please select a driver from the list.", form_data=post
+            request, error="Selected driver not found.", form_data=post
         )
     if not (origin_id and destination_id):
         return _render_new_trip(
@@ -240,14 +329,36 @@ def create_trip(request):
             id=destination_id, defaults={"address": destination_address}
         )
 
-        # status defaults to scheduled; Trip.save() assigns the public hashid.
-        Trip.objects.create(
+        # Service plan: the submitted pick, but only if it's in the set this
+        # rider is actually allowed (defaults + their private plans — the same
+        # query the dropdown renders from, so a tampered/stale id can't buy a
+        # plan the rider doesn't have). Anything else falls back to the zone
+        # default rather than failing the booking.
+        zone = _default_zone()
+        plan = None
+        if zone is not None:
+            allowed = ServicePlan.available_to(rider, zone)
+            plan_raw = post.get("service_plan", "").strip()
+            if plan_raw.isdigit():
+                plan = allowed.filter(pk=int(plan_raw)).first()
+            if plan is None:
+                plan = allowed.filter(is_default=True).first()
+
+        # status defaults to unassigned; Trip.save() assigns the public hashid.
+        trip = Trip.objects.create(
             driver=driver,
             rider=rider,
             origin=origin,
             destination=destination,
             date=date,
+            service_plan=plan,
         )
+        if plan is not None:
+            # Freeze the booking-time estimate. Route metrics are still null
+            # (Google Maps wiring pending), so today this is base fare + tax —
+            # it firms up automatically once distance/duration get populated.
+            trip.quoted_price = plan.quote(trip)
+            trip.save(update_fields=["quoted_price"])
     except IntegrityError:
         # e.g. the phone is already taken by a different account (phone is
         # unique). Re-render the form with the input preserved.
@@ -265,3 +376,98 @@ def create_trip(request):
     response = HttpResponse(status=204)
     response["HX-Trigger"] = json.dumps({"close-drawer": True, "trip-created": True})
     return response
+
+
+def update_trip(request, hashid):
+    """Save edits made in the trip detail drawer: driver (nullable — this is
+    where a dispatcher clears the assignment back to unassigned), pickup
+    date, origin/destination, and status. The drawer carries no rider fields,
+    so the rider FK is never touched here.
+    """
+    trip = get_object_or_404(
+        Trip.objects.select_related(*TRIP_SELECT_RELATED), hashid=hashid
+    )
+    post = request.POST
+    driver_id = post.get("driver", "").strip()
+    origin_id = post.get("origin_id", "").strip()
+    origin_address = post.get("origin_address", "").strip()
+    destination_id = post.get("destination_id", "").strip()
+    destination_address = post.get("destination_address", "").strip()
+    status_raw = post.get("status", "").strip()
+
+    # A blank driver clears the assignment; a non-blank id that doesn't
+    # resolve is treated the same as a tampered pick on the New Trip form.
+    driver = _drivers_qs().filter(pk=driver_id).first() if driver_id else None
+    if driver_id and driver is None:
+        return _render_trip_detail(request, trip, error="Selected driver not found.")
+    if not (origin_id and destination_id):
+        return _render_trip_detail(
+            request, trip, error="Please pick both an origin and a destination."
+        )
+
+    # datetime-local is "YYYY-MM-DDTHH:MM" (seconds optional); blank → no date.
+    date_raw = post.get("date", "").strip()
+    date = parse_datetime(date_raw) if date_raw else None
+    if date and timezone.is_naive(date):
+        date = timezone.make_aware(date)
+
+    origin, _ = Place.objects.get_or_create(
+        id=origin_id, defaults={"address": origin_address}
+    )
+    destination, _ = Place.objects.get_or_create(
+        id=destination_id, defaults={"address": destination_address}
+    )
+
+    trip.driver = driver
+    trip.origin = origin
+    trip.destination = destination
+    trip.date = date
+    if status_raw in TripStatus.values:
+        trip.status = status_raw
+
+    try:
+        trip.clean()
+    except ValidationError as e:
+        return _render_trip_detail(request, trip, error=" ".join(e.messages))
+    trip.save()
+
+    # 204 + triggers: the drawer closes and the trips table refreshes its rows
+    # (trips.html listens for trip-updated alongside trip-created).
+    response = HttpResponse(status=204)
+    response["HX-Trigger"] = json.dumps({"close-drawer": True, "trip-updated": True})
+    return response
+
+
+def driver_location(request):
+    """JSON: a driver's current map position, for the trip map's live poll
+    (c-trip.map). Position lives on the Vehicle (Vehicle.last_location,
+    overwritten per GPS ping — never appended), reached through the driver's
+    one-to-one vehicle. A PointField stores (x=lng, y=lat).
+
+    Returns {"location": null} — and the map simply shows no dot — when the
+    ?driver id is missing/unknown, the driver has no vehicle assigned, or that
+    vehicle has never reported a fix. Read-only and cheap: one indexed lookup
+    of a single row's point, so the poll can run every few seconds per open
+    drawer without concern.
+    """
+    driver_id = request.GET.get("driver", "").strip()
+    vehicle = None
+    if driver_id.isdigit():
+        vehicle = (
+            Vehicle.objects.filter(driver_id=int(driver_id))
+            .only("id", "last_location", "location_updated_at")
+            .first()
+        )
+    if vehicle is None or vehicle.last_location is None:
+        return JsonResponse({"location": None})
+    point = vehicle.last_location
+    return JsonResponse(
+        {
+            "location": {"lat": point.y, "lng": point.x},
+            "updated_at": (
+                vehicle.location_updated_at.isoformat()
+                if vehicle.location_updated_at
+                else None
+            ),
+        }
+    )
