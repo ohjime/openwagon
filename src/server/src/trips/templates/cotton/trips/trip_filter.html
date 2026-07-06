@@ -187,8 +187,10 @@ htmx request — see the store registered in trips/pages/trips.html.
                     document.addEventListener('keydown', (e) => {
                         if (e.key === 'Escape') this.showCalendar = false;
                     });
-                    // A new trip can land on a visible day — refresh its badge.
+                    // A new or edited trip can land on/move off a visible day —
+                    // refresh its badge either way.
                     window.addEventListener('trip-created', () => this.fetchCounts());
+                    window.addEventListener('trip-updated', () => this.fetchCounts());
                     // Refetch per-day trip counts whenever the visible window
                     // shifts (paging, sliding, calendar jump) or grows/shrinks.
                     this.$watch('anchorTime', () => this.fetchCounts());
