@@ -1,0 +1,43 @@
+<!--
+Row-expand preview for ServicePlanAdmin (core.admin.ServicePlanRatesSection):
+every rate ServicePlan._fare() multiplies against a trip's measurements, plus
+who the plan is available to. Static markup — no JS, unlike its map sibling.
+-->
+{% load unfold %}
+{% component "unfold/components/card.html" with title="Fare schedule" size="md" %}
+    <!-- gap-6 (not gap-x-6/gap-y-3, which aren't in Unfold's precompiled CSS
+         bundle — it only ships the split-axis gap utilities its own
+         templates happen to use, and neither of these are among them). -->
+    <dl class="grid grid-cols-2 gap-6 text-sm">
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Base fare</dt>
+            <dd class="font-medium">${{ plan.base_fare }}</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Per km</dt>
+            <dd class="font-medium">${{ plan.meter_rate }}</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Per minute</dt>
+            <dd class="font-medium">${{ plan.duration_rate }}</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Waiting (per min)</dt>
+            <dd class="font-medium">${{ plan.waiting_rate }}</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Tax rate</dt>
+            <dd class="font-medium">{{ tax_percent|floatformat:2 }}%</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Availability</dt>
+            <dd class="font-medium">
+                {% if plan.is_default %}
+                    Zone default (everyone)
+                {% else %}
+                    Private — {{ rider_count }} rider{{ rider_count|pluralize }}
+                {% endif %}
+            </dd>
+        </div>
+    </dl>
+{% endcomponent %}

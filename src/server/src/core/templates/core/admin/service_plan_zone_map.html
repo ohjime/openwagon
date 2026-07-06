@@ -1,0 +1,121 @@
+<!--
+Row-expand preview for ServicePlanAdmin (core.admin.ServicePlanZoneMapSection):
+the plan's zone boundary, drawn read-only on an OpenLayers/OSM map. Every row
+on the changelist renders this markup, but the map itself is only built the
+first time a row is actually expanded (x-effect gated on the parent row's
+`rowOpen`, set by unfold's change_list_results.html) — otherwise expanding a
+100-row page would spin up 100 maps at once.
+-->
+{% load unfold %}
+{% component "unfold/components/card.html" with title=zone.name size="md" %}
+    <!-- aspect-video / bg-x/70 / backdrop-blur-sm / opacity-70 aren't in Unfold's
+         precompiled CSS bundle (it only ships utilities its own templates use,
+         not our app's Tailwind build) — inline style + plain color classes
+         stand in where a custom utility would otherwise silently no-op. -->
+    <div class="relative w-full"
+         style="aspect-ratio: 16 / 9;"
+         data-map-id="{{ map_id }}"
+         data-script-id="{{ script_id }}"
+         x-data="{ started: false }"
+         x-effect="if (rowOpen && !started) { started = true; $nextTick(() => initServicePlanZoneMap($el)) }">
+        <div id="{{ map_id }}"
+             class="absolute inset-0 overflow-hidden rounded-default border border-base-200 dark:border-base-800"></div>
+        {% if not zone_geometry %}
+            <div class="absolute inset-0 z-10 flex items-center justify-center rounded-default border border-base-200 bg-base-100 dark:border-base-800 dark:bg-base-900">
+                <span class="text-sm font-medium text-base-500 dark:text-base-400">No zone boundary drawn yet</span>
+            </div>
+        {% endif %}
+    </div>
+    {{ zone_geometry|json_script:script_id }}
+{% endcomponent %}
+{# djlint:off #}
+<script>
+    (function () {
+        function loadOpenLayers(cb) {
+            if (window.ol) { cb(); return; }
+            var cssId = 'ol-css';
+            if (!document.getElementById(cssId)) {
+                var link = document.createElement('link');
+                link.id = cssId;
+                link.rel = 'stylesheet';
+                link.href = 'https://cdn.jsdelivr.net/npm/ol@v7.2.2/ol.css';
+                document.head.appendChild(link);
+            }
+            var jsId = 'ol-js';
+            var existing = document.getElementById(jsId);
+            if (existing) {
+                existing.addEventListener('load', cb, { once: true });
+                return;
+            }
+            var script = document.createElement('script');
+            script.id = jsId;
+            script.src = 'https://cdn.jsdelivr.net/npm/ol@v7.2.2/dist/ol.js';
+            script.onload = cb;
+            document.head.appendChild(script);
+        }
+
+        // The row's `<tr x-show="rowOpen">` hasn't necessarily finished sizing
+        // the container the instant $nextTick fires (same issue trip_detail.html
+        // solves for the drawer) — a 0-size map at init renders nothing, so wait
+        // for a real box first.
+        function waitForSize(el, tries) {
+            return new Promise(function (resolve) {
+                function check(n) {
+                    if (!el.isConnected || n <= 0 || (el.offsetWidth > 0 && el.offsetHeight > 0)) {
+                        resolve();
+                    } else {
+                        requestAnimationFrame(function () { check(n - 1); });
+                    }
+                }
+                check(tries || 120);
+            });
+        }
+
+        window.initServicePlanZoneMap = window.initServicePlanZoneMap || function (root) {
+            loadOpenLayers(function () {
+                var mapId = root.dataset.mapId;
+                var el = document.getElementById(mapId);
+                if (!el || el.dataset.initialized) return;
+                el.dataset.initialized = 'true';
+
+                waitForSize(el).then(function () { buildMap(el, root); });
+            });
+        };
+
+        function buildMap(el, root) {
+            var scriptEl = document.getElementById(root.dataset.scriptId);
+            var geometry = null;
+            try {
+                geometry = scriptEl ? JSON.parse(scriptEl.textContent) : null;
+            } catch (e) {
+                geometry = null;
+            }
+
+            var layers = [new ol.layer.Tile({ source: new ol.source.OSM() })];
+            var view = new ol.View({
+                center: ol.proj.fromLonLat([-104.9903, 39.7392]),
+                zoom: 10,
+            });
+
+            if (geometry) {
+                var olGeometry = new ol.format.GeoJSON().readGeometry(geometry, {
+                    dataProjection: 'EPSG:4326',
+                    featureProjection: 'EPSG:3857',
+                });
+                layers.push(new ol.layer.Vector({
+                    source: new ol.source.Vector({ features: [new ol.Feature({ geometry: olGeometry })] }),
+                    style: new ol.style.Style({
+                        fill: new ol.style.Fill({ color: 'rgba(99, 102, 241, 0.25)' }),
+                        stroke: new ol.style.Stroke({ color: '#6366f1', width: 2 }),
+                    }),
+                }));
+            }
+
+            var map = new ol.Map({ target: el, layers: layers, view: view, controls: [] });
+            if (geometry) {
+                view.fit(olGeometry.getExtent(), { padding: [16, 16, 16, 16], maxZoom: 15 });
+            }
+        }
+    })();
+</script>
+{# djlint:on #}

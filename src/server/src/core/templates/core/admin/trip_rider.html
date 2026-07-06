@@ -1,0 +1,42 @@
+<!--
+Row-expand preview for TripAdmin (core.admin.TripRiderSection): the customer
+booking the trip, with their avatar, plus the trip's key facts at a glance.
+-->
+{% load unfold %}
+{% component "unfold/components/card.html" with title="Rider" size="md" %}
+    <div class="flex items-center gap-3">
+        <!-- Fixed width/height (not w-12, which isn't in Unfold's precompiled
+             CSS bundle) — the same convention Unfold's own display_header.html
+             uses for avatar images. -->
+        <img src="{{ rider.account.avatar_src }}"
+             alt=""
+             width="48"
+             height="48"
+             class="rounded-full border border-base-200 object-cover dark:border-base-800" />
+        <div class="flex flex-col">
+            <span class="font-medium">{{ rider.account.first_name }} {{ rider.account.last_name }}</span>
+            <span class="text-base-500 dark:text-base-400 text-sm">{{ rider.account.email }}</span>
+            {% if rider.account.phone %}
+                <span class="text-base-500 dark:text-base-400 text-sm">{{ rider.account.phone }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <dl class="mt-4 grid grid-cols-2 gap-6 text-sm">
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Status</dt>
+            <dd class="font-medium">{{ trip.get_status_display }}</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Driver</dt>
+            <dd class="font-medium">{{ trip.driver.account.first_name }} {{ trip.driver.account.last_name }}</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Quoted price</dt>
+            <dd class="font-medium">{% if trip.quoted_price %}${{ trip.quoted_price }}{% else %}—{% endif %}</dd>
+        </div>
+        <div>
+            <dt class="text-base-500 dark:text-base-400">Date</dt>
+            <dd class="font-medium">{{ trip.date|date:"M j, Y g:i A"|default:"—" }}</dd>
+        </div>
+    </dl>
+{% endcomponent %}
