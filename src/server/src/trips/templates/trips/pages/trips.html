@@ -48,12 +48,14 @@ load (alpine:init) and an htmx nav swap (script re-executed, Alpine already up).
     })();
 </script>
 {# djlint:on #}
-<!-- x-data makes this an Alpine root so @trip-created (fired by core.create_trip's
-   HX-Trigger after a new trip is made) re-runs the shared tripFilter store's
-   apply(), refreshing #trips_table with the new row. -->
+<!-- x-data makes this an Alpine root so @trip-created / @trip-updated (fired by
+   core.create_trip / core.update_trip's HX-Trigger after a trip is made or
+   edited) re-run the shared tripFilter store's apply(), refreshing
+   #trips_table with the new/changed row. -->
 <div class="flex h-full flex-col items-center gap-6 px-6 py-6"
      x-data
-     @trip-created.window="$store.tripFilter.apply()">
+     @trip-created.window="$store.tripFilter.apply()"
+     @trip-updated.window="$store.tripFilter.apply()">
     <div class="w-full">
         <c-trips.trip-filter />
     </div>
