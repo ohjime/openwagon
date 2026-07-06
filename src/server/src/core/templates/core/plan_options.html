@@ -1,0 +1,15 @@
+<!--
+The New Trip form's service-plan option list. Rendered inline on form load and
+re-rendered by core.views.trip_plans when a rider is picked or the email field
+changes (htmx swaps innerHTML of the select). `plans` comes ordered defaults-
+first; when no explicit selection survives (selected_plan_id is None) the zone
+default is preselected.
+-->
+{% for plan in plans %}
+    <option value="{{ plan.pk }}"
+            {% if plan.pk == selected_plan_id %}selected{% elif selected_plan_id is None and plan.is_default %}selected{% endif %}>
+        {{ plan.name }}
+    </option>
+{% empty %}
+    <option value="">No service plans configured</option>
+{% endfor %}

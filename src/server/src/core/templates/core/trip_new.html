@@ -164,6 +164,25 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
             <input type="hidden" name="destination_id" x-model="destinationId" />
             <input type="hidden" name="destination_address" x-model="destination" />
             {# djlint:on #}
+            <!-- Service Plan: the fare schedule this trip is priced with. The
+               options are the zone defaults plus the picked rider's private
+               plans; htmx re-renders them (core_trip_plans) when riderPicker
+               fires rider-picked (programmatic fills emit no change event) or
+               the email field is edited by hand. -->
+            <label class="label">
+                <span class="label-text">Service Plan</span>
+            </label>
+            {# djlint:off #}
+            <select name="service_plan"
+                    class="select w-full"
+                    hx-get="{% url 'core_trip_plans' %}"
+                    hx-trigger="rider-picked from:body, change from:input[name='email']"
+                    hx-include="input[name='email']"
+                    hx-target="this"
+                    hx-swap="innerHTML">
+                {% include "core/plan_options.html" %}
+            </select>
+            {# djlint:on #}
             <!-- External Trip Id (layout-only; not persisted yet) -->
             <label class="label">
                 <span class="label-text">External Trip Id</span>
@@ -179,17 +198,20 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
             <legend class="fieldset-legend text-lg">Driver Details</legend>
             {# djlint:off #}
             <div class="relative" x-data="driverPicker()">
-                <input type="hidden" name="driver" x-model="driverId" required />
+                <input type="hidden" name="driver" x-model="driverId" />
                 <label class="input input-bordered flex w-full items-center gap-2">
                     <c-icons.search class="h-[1em] opacity-50" />
                     <input type="text"
                            class="grow"
                            autocomplete="off"
-                           placeholder="Search drivers by name, email or phone..."
+                           placeholder="Search drivers by name, email or phone... (optional)"
                            x-model="q"
                            @focus="open = true"
                            @input="open = true; driverId = ''"
                            @click.outside="open = false" />
+                    <button type="button" x-show="q" @click="clearDriver()" aria-label="Clear driver" class="opacity-50 hover:opacity-100">
+                        <c-icons.close class="size-4" />
+                    </button>
                 </label>
                 <ul x-show="open"
                     x-cloak
@@ -213,22 +235,12 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
             {# djlint:on #}
         </fieldset>
         <!-- ===== Map Preview ===== -->
-        <!-- Live route preview. tripForm builds the map once Maps loads and draws
-           the route as soon as BOTH pickup + destination place ids are set; the
-           No-Preview overlay (x-show) covers the map until then. -->
-        <fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4">
-            <legend class="fieldset-legend text-lg">Map Preview</legend>
-            {# djlint:off #}
-            <div class="relative mt-2 aspect-video w-full">
-                <div id="trip-map"
-                     class="absolute inset-0 overflow-hidden rounded-box border border-base-300"></div>
-                <div x-show="!(originId && destinationId)"
-                     class="absolute inset-0 z-10 flex items-center justify-center rounded-box border border-base-300 bg-base-200/70 backdrop-blur-sm">
-                    <span class="text-sm font-medium opacity-70">No Preview</span>
-                </div>
-            </div>
-            {# djlint:on #}
-        </fieldset>
+        <!-- Self-contained map component (c-trip.map): live origin -> destination
+           route preview, plus — once a driver AND both ends are picked — the
+           assigned driver's live position (poll-url). tripForm feeds it route picks
+           via the map-route event and the combobox feeds the driver via map-driver.
+           Seeds are blank: nothing is chosen until the dispatcher picks it. -->
+        <c-trip.map label="Map Preview" aspect="aspect-video" maps_key="{{ GOOGLE_MAPS_API_KEY|default_if_none:'' }}" status="assigned" poll_url="{% url 'core_driver_location' %}" />
     </form>
     <c-slot name="footer_actions">
         <button type="submit" form="trip_new_form" class="btn btn-md !bg-green-400">Create Trip</button>
@@ -250,14 +262,14 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
                 showOrigin: false,
                 showDestination: false,
                 autocompleteService: null,
-                map: null,
-                directionsService: null,
-                directionsRenderer: null,
                 initRoute(root) {
                     const key = (root?.dataset?.mapsKey || window.GOOGLE_MAPS_API_KEY || '').trim();
+                    // Maps is loaded here only for the Places autocomplete; the map
+                    // component (c-trip.map) owns the map + route drawing and loads
+                    // Maps too (shared google-maps-js singleton).
                     const ready = () => {
                         this.autocompleteService = new google.maps.places.AutocompleteService();
-                        this.initMap();
+                        this.notifyRoute();
                     };
                     if (window.google?.maps?.places) {
                         ready();
@@ -277,66 +289,14 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
                     s.onload = ready;
                     document.head.appendChild(s);
                 },
-                // Resolve once `el` has a real on-screen box (or after ~tries frames
-                // as a backstop) — the drawer fires show-drawer AFTER htmx swaps this
-                // in, so a 0-size map at init would render wrong.
-                waitForSize(el, tries = 120) {
-                    return new Promise((resolve) => {
-                        const check = (n) => {
-                            if (!el.isConnected || n <= 0 || (el.offsetWidth > 0 && el.offsetHeight > 0)) {
-                                resolve();
-                            } else {
-                                requestAnimationFrame(() => check(n - 1));
-                            }
-                        };
-                        check(tries);
-                    });
-                },
-                async initMap() {
-                    const el = this.$root?.querySelector('#trip-map');
-                    if (!el || this.map) return;
-                    await this.waitForSize(el);
-                    let ColorScheme;
-                    try {
-                        ({ ColorScheme } = await google.maps.importLibrary('core'));
-                    } catch (e) {
-                        console.warn('Failed to import google.maps ColorScheme; using default.', e);
-                    }
-                    this.map = new google.maps.Map(el, {
-                        center: { lat: 53.5461, lng: -113.4938 },
-                        zoom: 12,
-                        mapTypeControl: false,
-                        streetViewControl: false,
-                        fullscreenControl: false,
-                        ...(ColorScheme ? { colorScheme: this.colorScheme(ColorScheme) } : {}),
-                    });
-                    this.directionsService = new google.maps.DirectionsService();
-                    this.directionsRenderer = new google.maps.DirectionsRenderer({ map: this.map });
-                    // Draw straight away in case both ends are already chosen.
-                    this.drawRoute();
-                },
-                colorScheme(ColorScheme) {
-                    const root = document.documentElement;
-                    const theme = root?.dataset?.theme || '';
-                    if (theme) return theme.toLowerCase().includes('dark') ? ColorScheme.DARK : ColorScheme.LIGHT;
-                    if (root?.classList?.contains('dark')) return ColorScheme.DARK;
-                    return ColorScheme.FOLLOW_SYSTEM ?? ColorScheme.LIGHT;
-                },
-                // Render the route when both ends are picked; clear it otherwise so
-                // the No-Preview overlay (x-show) lines up with a blank map.
-                drawRoute() {
-                    if (!this.map || !this.directionsService || !this.directionsRenderer) return;
-                    if (!(this.originId && this.destinationId)) {
-                        this.directionsRenderer.set('directions', null);
-                        return;
-                    }
-                    this.directionsService.route({
-                        origin: { placeId: this.originId },
-                        destination: { placeId: this.destinationId },
-                        travelMode: google.maps.TravelMode.DRIVING,
-                    }, (res, status) => {
-                        if (status === 'OK') this.directionsRenderer.setDirections(res);
-                        else console.warn('Directions request failed:', status);
+                // Publish the current route to the map component (c-trip.map),
+                // which listens for map-route on the window and redraws.
+                notifyRoute() {
+                    this.$dispatch('map-route', {
+                        origin: this.origin,
+                        originId: this.originId,
+                        destination: this.destination,
+                        destinationId: this.destinationId,
                     });
                 },
                 fetchPredictions(field) {
@@ -347,7 +307,7 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
                     // Typing invalidates a previously picked place id until re-picked,
                     // which clears the preview back to No-Preview.
                     this[idKey] = '';
-                    this.drawRoute();
+                    this.notifyRoute();
                     if (!text || !this.autocompleteService) {
                         this[listKey] = [];
                         this[showKey] = false;
@@ -373,7 +333,7 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
                         this.destinationId = pred.place_id;
                         this.showDestination = false;
                     }
-                    this.drawRoute();
+                    this.notifyRoute();
                 },
                 // Fill a field from a Recent-locations pick (address + place id).
                 selectHistory(field, address, placeId) {
@@ -386,7 +346,7 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
                         this.destinationId = placeId;
                         this.showDestination = false;
                     }
-                    this.drawRoute();
+                    this.notifyRoute();
                 },
             };
         }
@@ -434,6 +394,10 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
                     // phoneExt / externalId aren't carried on existing riders.
                     this.q = `${d.first || ''} ${d.last || ''}`.trim();
                     this.open = false;
+                    // Programmatic fills fire no change event, so tell the
+                    // service-plan dropdown to refresh for this rider (htmx
+                    // listens for rider-picked on body).
+                    document.body.dispatchEvent(new Event('rider-picked'));
                 },
             };
         }
@@ -449,6 +413,18 @@ CSRF is added to the htmx POST by the global handler in dashboard/base.html.
                     this.driverId = id;
                     this.q = label;
                     this.open = false;
+                    this.notifyDriver();
+                },
+                clearDriver() {
+                    this.driverId = '';
+                    this.q = '';
+                    this.open = true;
+                    this.notifyDriver();
+                },
+                // Tell the map component (c-trip.map) which driver to track; it
+                // listens for map-driver on the window.
+                notifyDriver() {
+                    this.$dispatch('map-driver', { driverId: this.driverId });
                 },
                 matches(el) {
                     const q = (this.q || '').trim().toLowerCase();
