@@ -1,0 +1,353 @@
+<!--
+Trip map surface — c-trip.map. The single place Google Maps is drawn in the trip
+drawers (New Trip and trip detail).
+
+Default behavior: render the map and draw the origin -> destination driving
+route. Optional driver tracking: when a poll-url is given, it also follows the
+assigned driver — polling that endpoint for the driver's live vehicle position
+and dropping a moving dot on the map — but only once a driver AND both route ends
+are set, so the dot always appears alongside a real drawn path. (On trip detail
+the saved trip already has both ends; on New Trip all three must be picked first,
+which is exactly the "iff origin + destination + driver" rule.)
+
+Self-contained (its own Alpine tripMap scope) and event-driven, so the
+surrounding form stays the source of truth for the route/driver picks. It listens
+on the window for:
+  - "map-route"   detail {originId, origin, destinationId, destination}
+  - "map-driver"  detail {driverId}
+and is ALSO seeded with the same values as data- attributes below, so it paints
+correctly on first render without racing those events. The New Trip form
+(tripForm) and the detail drawer (tripDetail) dispatch them; the driver combobox
+(driverPicker) dispatches map-driver.
+
+Driver position lives on the Vehicle (Vehicle.last_location), reached through the
+driver's one-to-one vehicle — see core.views.driver_location, the poll endpoint.
+
+Props:
+  maps-key       Google Maps JS API key (GOOGLE_MAPS_API_KEY)
+  origin / origin-id / destination / destination-id   initial route seed
+  driver-id      initially-assigned driver id (blank on New Trip)
+  poll-url       driver-location endpoint; OMIT to disable driver tracking
+  poll-interval  ms between polls (default 10000)
+  label          fieldset legend (default "Route")
+  aspect         Tailwind aspect-ratio class for the map box (default aspect-[5/4])
+-->
+<c-vars maps_key=""
+        origin=""
+        origin_id=""
+        destination=""
+        destination_id=""
+        driver_id=""
+        status=""
+        poll_url=""
+        poll_interval="10000"
+        label="Route"
+        aspect="aspect-[5/4]" />
+<fieldset class="fieldset w-full rounded-box border border-base-300 bg-base-100 !p-4"
+          x-data="tripMap()"
+          x-init="init($el)"
+          data-maps-key="{{ maps_key|default_if_none:'' }}"
+          data-origin="{{ origin|default_if_none:'' }}"
+          data-origin-id="{{ origin_id|default_if_none:'' }}"
+          data-destination="{{ destination|default_if_none:'' }}"
+          data-destination-id="{{ destination_id|default_if_none:'' }}"
+          data-driver-id="{{ driver_id|default_if_none:'' }}"
+          data-status="{{ status|default_if_none:'' }}"
+          data-poll-url="{{ poll_url|default_if_none:'' }}"
+          data-poll-interval="{{ poll_interval }}"
+          @map-route.window="onRoute($event.detail)"
+          @map-driver.window="onDriver($event.detail)"
+          @map-status.window="onStatus($event.detail)">
+    <legend class="fieldset-legend text-lg">{{ label }}</legend>
+    <!-- Map box. The aspect-ratio lives on the WRAPPER; the map fills it via
+         absolute inset-0 so it always has a definite box (a paginated/animated
+         drawer can hand the map a 0-size element mid-open otherwise). -->
+    {# djlint:off #}
+    <div class="relative mt-2 w-full {{ aspect }}">
+        <div x-ref="canvas"
+             class="absolute inset-0 overflow-hidden rounded-box border border-base-300"></div>
+        <div x-show="!(originId && destinationId)"
+             class="absolute inset-0 z-10 flex items-center justify-center rounded-box border border-base-300 bg-base-200/70 backdrop-blur-sm">
+            <span class="text-sm font-medium opacity-70">No Preview</span>
+        </div>
+        <!-- Driver-tracking maps only: a small hovering notice when there IS a
+             route to show but no driver is assigned, so no pin is placed. -->
+        <div x-show="pollUrl && originId && destinationId && !driverId"
+             x-cloak
+             class="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full border border-base-300 bg-base-100/90 px-3 py-1 text-sm font-medium opacity-90 shadow-md backdrop-blur">
+            No driver assigned
+        </div>
+    </div>
+    <!-- Source shape for the driver marker: the c-icons car, read by JS and
+         recoloured per trip status into a data-URI pin. Hidden; never laid out. -->
+    <div x-ref="carIcon" class="hidden"><c-icons.car /></div>
+    {# djlint:on #}
+    {# djlint:off #}
+    <script>
+        // The map surface: loads Google Maps (once, shared singleton), draws the
+        // origin -> destination route, and — when a poll-url is supplied — tracks
+        // the assigned driver's live position. Route/driver picks arrive as window
+        // events (map-route / map-driver) AND are seeded from data- attributes, so
+        // the map is correct on first paint and stays in sync with the form.
+        window.tripMap = window.tripMap || function () {
+            return {
+                root: null,
+                mapsKey: '',
+                origin: '',
+                originId: '',
+                destination: '',
+                destinationId: '',
+                driverId: '',
+                status: '',
+                pollUrl: '',
+                pollInterval: 10000,
+                // Marker colour per trip status (blue-ish assigned is the default
+                // for anything unmapped, e.g. a brand-new trip).
+                statusColors: {
+                    unassigned: '#64748b',
+                    assigned: '#3b82f6',
+                    enroute: '#f59e0b',
+                    arrived: '#a855f7',
+                    in_progress: '#06b6d4',
+                    completed: '#22c55e',
+                    canceled: '#ef4444',
+                },
+                map: null,
+                directionsService: null,
+                directionsRenderer: null,
+                driverMarker: null,
+                pollTimer: null,
+                centeredOnDriver: false,
+
+                init(root) {
+                    this.root = root;
+                    const d = root.dataset;
+                    this.mapsKey = (d.mapsKey || window.GOOGLE_MAPS_API_KEY || '').trim();
+                    this.origin = d.origin || '';
+                    this.originId = d.originId || '';
+                    this.destination = d.destination || '';
+                    this.destinationId = d.destinationId || '';
+                    this.driverId = d.driverId || '';
+                    this.status = d.status || '';
+                    this.pollUrl = d.pollUrl || '';
+                    this.pollInterval = parseInt(d.pollInterval, 10) || 10000;
+                    // Redraw / re-evaluate tracking whenever a pick changes (the
+                    // watchers only fire on CHANGE — the seeded values are handled
+                    // once by initMap()).
+                    this.$watch('originId', () => { this.drawRoute(); this.syncTracking(); });
+                    this.$watch('destinationId', () => { this.drawRoute(); this.syncTracking(); });
+                    this.$watch('driverId', () => this.syncTracking());
+                    // Status only changes the marker's colour, not whether we track.
+                    this.$watch('status', () => this.recolorDriver());
+                    this.loadMaps(() => this.initMap());
+                },
+
+                // Route picked in the form (tripForm / tripDetail dispatch map-route).
+                onRoute(detail) {
+                    if (!detail) return;
+                    if ('origin' in detail) this.origin = detail.origin || '';
+                    if ('originId' in detail) this.originId = detail.originId || '';
+                    if ('destination' in detail) this.destination = detail.destination || '';
+                    if ('destinationId' in detail) this.destinationId = detail.destinationId || '';
+                },
+
+                // Driver picked in the form (driverPicker dispatches map-driver).
+                onDriver(detail) {
+                    if (!detail) return;
+                    this.driverId = (detail.driverId || '').toString();
+                },
+
+                // Trip status changed in the form (the status select dispatches
+                // map-status) — repaints the driver's car marker.
+                onStatus(detail) {
+                    if (!detail) return;
+                    this.status = detail.status || '';
+                },
+
+                loadMaps(cb) {
+                    // Always request the places library too: the surrounding form's
+                    // address autocomplete shares this singleton script, and whichever
+                    // of us loads first fixes its src — so both must ask for places.
+                    if (window.google && window.google.maps) { cb(); return; }
+                    const id = 'google-maps-js';
+                    const existing = document.getElementById(id);
+                    if (existing) { existing.addEventListener('load', cb, { once: true }); return; }
+                    const s = document.createElement('script');
+                    s.id = id;
+                    s.async = true;
+                    s.defer = true;
+                    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(this.mapsKey)}&libraries=places`;
+                    s.onload = cb;
+                    document.head.appendChild(s);
+                },
+
+                // Resolve once the canvas has a real on-screen box (or after ~tries
+                // frames). The drawer fires show-drawer AFTER htmx swaps this in, so a
+                // 0-size map at init would render wrong.
+                waitForSize(el, tries = 120) {
+                    return new Promise((resolve) => {
+                        const check = (n) => {
+                            if (!el.isConnected || n <= 0 || (el.offsetWidth > 0 && el.offsetHeight > 0)) {
+                                resolve();
+                            } else {
+                                requestAnimationFrame(() => check(n - 1));
+                            }
+                        };
+                        check(tries);
+                    });
+                },
+
+                async initMap() {
+                    const el = this.$refs.canvas;
+                    if (!el || this.map) return;
+                    await this.waitForSize(el);
+                    let ColorScheme;
+                    try {
+                        ({ ColorScheme } = await google.maps.importLibrary('core'));
+                    } catch (e) {
+                        console.warn('Failed to import google.maps ColorScheme; using default.', e);
+                    }
+                    this.map = new google.maps.Map(el, {
+                        center: { lat: 53.5461, lng: -113.4938 },
+                        zoom: 12,
+                        mapTypeControl: false,
+                        streetViewControl: false,
+                        fullscreenControl: false,
+                        ...(ColorScheme ? { colorScheme: this.colorScheme(ColorScheme) } : {}),
+                    });
+                    this.directionsService = new google.maps.DirectionsService();
+                    this.directionsRenderer = new google.maps.DirectionsRenderer({ map: this.map });
+                    // Seeded values never tripped the watchers, so handle them once.
+                    this.drawRoute();
+                    this.syncTracking();
+                },
+
+                colorScheme(ColorScheme) {
+                    const root = document.documentElement;
+                    const theme = root?.dataset?.theme || '';
+                    if (theme) return theme.toLowerCase().includes('dark') ? ColorScheme.DARK : ColorScheme.LIGHT;
+                    if (root?.classList?.contains('dark')) return ColorScheme.DARK;
+                    return ColorScheme.FOLLOW_SYSTEM ?? ColorScheme.LIGHT;
+                },
+
+                // Draw the route when both ends are set; clear it (and let the
+                // No-Preview overlay show) otherwise.
+                drawRoute() {
+                    if (!this.map || !this.directionsService || !this.directionsRenderer) return;
+                    if (!(this.originId && this.destinationId)) {
+                        this.directionsRenderer.set('directions', null);
+                        return;
+                    }
+                    this.directionsService.route({
+                        origin: { placeId: this.originId },
+                        destination: { placeId: this.destinationId },
+                        travelMode: google.maps.TravelMode.DRIVING,
+                    }, (res, status) => {
+                        if (status === 'OK') this.directionsRenderer.setDirections(res);
+                        else console.warn('Directions request failed:', status);
+                    });
+                },
+
+                // ---- Driver tracking -------------------------------------------
+                // Track only when a poll endpoint was supplied AND a driver is set
+                // AND there's a route to show them alongside.
+                get tracking() {
+                    return !!(this.pollUrl && this.driverId && this.originId && this.destinationId);
+                },
+
+                syncTracking() {
+                    if (this.tracking) this.startPolling();
+                    else this.stopPolling();
+                },
+
+                startPolling() {
+                    if (this.pollTimer || !this.map) return;
+                    this.centeredOnDriver = false;
+                    this.pollDriver(); // fetch immediately, don't wait a whole interval
+                    this.pollTimer = setInterval(() => this.pollDriver(), this.pollInterval);
+                },
+
+                stopPolling() {
+                    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+                    if (this.driverMarker) { this.driverMarker.setMap(null); this.driverMarker = null; }
+                },
+
+                async pollDriver() {
+                    // Self-heal a timer left running after the drawer was swapped away.
+                    if (!this.root || !this.root.isConnected) { this.stopPolling(); return; }
+                    if (!this.tracking) { this.stopPolling(); return; }
+                    try {
+                        const sep = this.pollUrl.includes('?') ? '&' : '?';
+                        const res = await fetch(this.pollUrl + sep + 'driver=' + encodeURIComponent(this.driverId), {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        });
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        this.renderDriver(data.location);
+                    } catch (e) {
+                        // Transient network error — the next tick tries again.
+                    }
+                },
+
+                // The colour the car is painted, keyed by trip status.
+                statusColor() {
+                    return this.statusColors[this.status] || this.statusColors.assigned;
+                },
+
+                // Build the Google Maps marker icon: the c-icons car (its path read
+                // from the hidden holder) on a white chip, ringed + filled in the
+                // status colour. Returns null if the icon isn't in the DOM yet.
+                carIcon(color) {
+                    const path = this.$refs.carIcon?.querySelector('path');
+                    const d = path?.getAttribute('d');
+                    if (!d) return null;
+                    const svg =
+                        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="44" height="44">'
+                        + `<circle cx="22" cy="22" r="19" fill="#ffffff" stroke="${color}" stroke-width="3"/>`
+                        + `<g transform="translate(10,10)"><path d="${d}" fill="${color}"/></g>`
+                        + '</svg>';
+                    return {
+                        url: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg),
+                        scaledSize: new google.maps.Size(44, 44),
+                        anchor: new google.maps.Point(22, 22),
+                    };
+                },
+
+                renderDriver(loc) {
+                    if (!this.map) return;
+                    if (!loc) {
+                        if (this.driverMarker) this.driverMarker.setMap(null);
+                        return;
+                    }
+                    const pos = { lat: loc.lat, lng: loc.lng };
+                    const icon = this.carIcon(this.statusColor());
+                    if (!this.driverMarker) {
+                        this.driverMarker = new google.maps.Marker({
+                            map: this.map,
+                            position: pos,
+                            title: 'Driver',
+                            zIndex: 999,
+                            ...(icon ? { icon } : {}),
+                        });
+                    } else {
+                        this.driverMarker.setPosition(pos);
+                        if (icon) this.driverMarker.setIcon(icon);
+                        this.driverMarker.setMap(this.map);
+                    }
+                    // Center on the driver the first time we locate them, then leave
+                    // the view alone so the map doesn't jerk on every update.
+                    if (!this.centeredOnDriver) { this.map.panTo(pos); this.centeredOnDriver = true; }
+                },
+
+                // Repaint the existing marker when the status changes mid-drawer,
+                // without waiting for the next poll tick.
+                recolorDriver() {
+                    if (!this.driverMarker) return;
+                    const icon = this.carIcon(this.statusColor());
+                    if (icon) this.driverMarker.setIcon(icon);
+                },
+            };
+        };
+</script>
+    {# djlint:on #}
+</fieldset>
