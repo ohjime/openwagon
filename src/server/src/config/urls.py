@@ -24,6 +24,12 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
+    from django.conf.urls.static import static
+
     urlpatterns += [
         path("__reload__/", include("django_browser_reload.urls")),
     ]
+    # Serve user-uploaded media (vehicle documents, etc.) from MEDIA_ROOT in dev.
+    # In production these live in S3 (see STORAGES in settings) and are served by
+    # the bucket, so this dev-only helper never runs there.
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
