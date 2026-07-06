@@ -78,7 +78,7 @@ core component, so this page reaches a trip without depending on the trips featu
                                 &mdash;
                             {% endif %}
                         </span>
-                        <span class="py-0.5 px-2 rounded-3xl text-xs capitalize {% if trip.status == 'canceled' %}bg-red-300{% elif trip.status == 'completed' %}bg-green-300{% elif trip.status == 'scheduled' %}bg-purple-200{% elif trip.status == 'in_progress' %}bg-yellow-100{% else %}bg-base-300{% endif %}">{{ trip.get_status_display }}</span>
+                        <span class="py-0.5 px-2 rounded-3xl text-xs capitalize {% if trip.status == 'canceled' %}bg-red-300{% elif trip.status == 'completed' %}bg-green-300{% elif trip.status == 'unassigned' %}bg-purple-200{% elif trip.status == 'in_progress' %}bg-yellow-100{% else %}bg-base-300{% endif %}">{{ trip.get_status_display }}</span>
                     </div>
                 </c-trip-drawer-button>
             {% empty %}
