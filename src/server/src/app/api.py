@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from pathlib import Path
 
 import firebase_admin
@@ -240,21 +241,45 @@ def create_rider(request: HttpRequest):
     return {"status": "ok", "rider": _rider_dict(rider), "created": created}
 
 
-class LocationPing(Schema):
+class LocationFix(Schema):
     lat: float
     lng: float
+    # Client capture time (ISO 8601). Optional and currently informational — the
+    # batch is drained oldest-first, so ordering already identifies the newest.
+    ts: datetime | None = None
+
+
+class LocationBatch(Schema):
+    """A batch of GPS fixes uploaded by the driver app.
+
+    The app (locus) queues fixes locally and drains them in batches, so an
+    offline stretch arrives in a single request when connectivity returns. The
+    body carries ONLY coordinates — never a driver/device id; identity comes from
+    the verified Firebase token (see update_driver_location).
+    """
+
+    fixes: list[LocationFix]
 
 
 @api.post("/drivers/location", tags=["drivers"])
-def update_driver_location(request: HttpRequest, payload: LocationPing):
-    """Overwrite the driver's current position from a GPS ping.
+def update_driver_location(request: HttpRequest, payload: LocationBatch):
+    """Overwrite the driver's current position from a batch of GPS fixes.
 
     This is the write side of core.views.driver_location (which the dispatcher
     map polls). Position lives on the driver's Vehicle and is OVERWRITTEN in
-    place — never appended — so tracking a fleet is one row UPDATE per ping (see
-    the Vehicle model docstring). A PointField stores (x=lng, y=lat).
+    place — never appended — so only the *newest* fix in the batch matters; a
+    whole batch is one row UPDATE (see the Vehicle model docstring). A PointField
+    stores (x=lng, y=lat).
+
+    Security: the write is bound to the caller's own Vehicle, resolved from the
+    verified Firebase token via _require_driver — a driver can only ever update
+    their own location, regardless of the request body.
     """
-    if not (-90.0 <= payload.lat <= 90.0 and -180.0 <= payload.lng <= 180.0):
+    if not payload.fixes:
+        raise HttpError(400, "No location fixes provided.")
+    # locus drains its queue oldest-first, so the last fix is the newest.
+    newest = payload.fixes[-1]
+    if not (-90.0 <= newest.lat <= 90.0 and -180.0 <= newest.lng <= 180.0):
         raise HttpError(400, "lat/lng out of range.")
     driver = _require_driver(request)
     vehicle = getattr(driver, "vehicle", None)
@@ -262,7 +287,7 @@ def update_driver_location(request: HttpRequest, payload: LocationPing):
         # 409: the driver is real but has no vehicle to attach a position to.
         # The app treats this as "tracking unavailable", not an auth failure.
         raise HttpError(409, "No vehicle is assigned to this driver.")
-    vehicle.last_location = Point(payload.lng, payload.lat)
+    vehicle.last_location = Point(newest.lng, newest.lat)
     vehicle.location_updated_at = timezone.now()
     vehicle.save(update_fields=["last_location", "location_updated_at"])
     return {"status": "ok"}
