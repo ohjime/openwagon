@@ -12,6 +12,7 @@ from ninja.errors import HttpError
 from ninja.security import HttpBearer
 from pydantic import EmailStr, HttpUrl
 
+from core.geocoding import ensure_place_coordinate
 from core.models import Account, Driver, Rider, Trip, TripStatus
 
 
@@ -138,7 +139,24 @@ def _rider_dict(rider: Rider) -> dict:
     return {"id": rider.id}
 
 
+def _place_latlng(place) -> tuple[float | None, float | None]:
+    """(lat, lng) for a Place, geocoding+persisting its coordinate on first read.
+
+    The mobile map needs real coordinates to pin the ends and frame the route.
+    Real Places start with a null coordinate (booking predictions carry no
+    lat/lng), so backfill it here — the lookup happens once, then reads the
+    stored point. Returns (None, None) when it can't be resolved; the client
+    treats a missing end as "no route to draw" rather than erroring.
+    """
+    coord = place.coordinate or ensure_place_coordinate(place)
+    if coord is None:
+        return None, None
+    return coord.y, coord.x  # PointField stores x=lng, y=lat
+
+
 def _trip_dict(trip: Trip) -> dict:
+    origin_lat, origin_lng = _place_latlng(trip.origin)
+    destination_lat, destination_lng = _place_latlng(trip.destination)
     return {
         "id": trip.id,
         "hashid": trip.hashid,
@@ -149,8 +167,14 @@ def _trip_dict(trip: Trip) -> dict:
         "date": trip.date.isoformat() if trip.date else "",
         "origin_id": trip.origin_id,
         "origin_address": trip.origin.address,
+        # Geocoded ends (null until Google resolves the place id) — the mobile
+        # map pins these and frames the route between them.
+        "origin_lat": origin_lat,
+        "origin_lng": origin_lng,
         "destination_id": trip.destination_id,
         "destination_address": trip.destination.address,
+        "destination_lat": destination_lat,
+        "destination_lng": destination_lng,
         "status": trip.status,
         # No columns for these yet; the client defaults them to '' anyway.
         "customer_notes": "",
