@@ -1,0 +1,40 @@
+import 'package:app/core/models/trip.dart';
+import 'package:app/trip/detail/view/trip_detail_page.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+
+class TripListItem extends StatelessWidget {
+  const TripListItem({super.key, required this.trip});
+
+  final Trip trip;
+
+  String _formatDate(DateTime? dt) {
+    if (dt == null) return 'TBD';
+    final fmt = DateFormat('MMM d, yyyy h:mm a');
+    return fmt.format(dt.toLocal());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = '${trip.originAddress} → ${trip.destinationAddress}';
+    final subtitle = '${trip.status} • ${_formatDate(trip.date)}';
+
+    return ListTile(
+      key: Key('tripListItem_${trip.id}_${trip.hashid}'),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(subtitle),
+      leading: const Icon(Icons.directions_car_rounded),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      dense: false,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        Navigator.of(context).push(TripDetailPage.route(trip: trip));
+      },
+      onLongPress: () {
+        HapticFeedback.heavyImpact();
+        Navigator.of(context).push(TripDetailPage.route(trip: trip));
+      },
+    );
+  }
+}

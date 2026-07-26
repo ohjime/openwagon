@@ -1,8 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Driver location sharing: while a driver is on an active trip, locus
+         streams GPS fixes to the backend from a background service, so tracking
+         survives the app being backgrounded or terminated (see
+         LocationRepository). The locus plugin's own manifest also declares these
+         and the foreground service; they're repeated here explicitly for
+         reviewers and to satisfy `dart run locus:doctor`. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- usesCleartextTraffic: the dev server is reached over plain HTTP on the
+         LAN (see ApiConfig._deviceHost). Android 9+ blocks cleartext by default,
+         which silently drops those API calls. This is for local development;
+         production talks to the API over HTTPS and should not ship this flag. -->
     <application
         android:label="app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
