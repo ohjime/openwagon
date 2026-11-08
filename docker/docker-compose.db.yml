@@ -1,0 +1,22 @@
+# Standalone Postgres + PostGIS for the native development server: make db.
+# Credentials match DATABASE_URL in env/.env.dev.example. The postgis image
+# enables the postgis extension in POSTGRES_DB on first start.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: waygon_db
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U admin -d waygon_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

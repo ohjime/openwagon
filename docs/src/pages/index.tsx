@@ -39,7 +39,7 @@ function HomepageHeader() {
             </Link>
             <a
               className={clsx('button', 'button--secondary', 'button--lg', styles.githubDownloadButton)}
-              href="https://github.com/ohjime/wagon/releases/tag/v0.10.0-alpha"
+              href="https://github.com/ohjime/waygon/releases/tag/v0.10.0-alpha"
               download
             >
               <svg
@@ -164,11 +164,11 @@ const RotatingiPhone = React.memo(() => {
   const { ref, isVisible } = useScrollAnimation();
   
   const screenshots = [
-    { src: '/Wagon/img/product-screenshots/app-home.jpg', alt: 'Wagon Home Screen' },
-    { src: '/Wagon/img/product-screenshots/app-sessions.jpg', alt: 'Sessions Management' },
-    { src: '/Wagon/img/product-screenshots/app-chat.jpg', alt: 'Chat Interface' },
-    { src: '/Wagon/img/product-screenshots/app-profile.jpg', alt: 'Profile Customization' },
-    { src: '/Wagon/img/product-screenshots/app-settings.jpg', alt: 'Settings Screen' }
+    { src: '/Waygon/img/product-screenshots/app-home.jpg', alt: 'Waygon Home Screen' },
+    { src: '/Waygon/img/product-screenshots/app-sessions.jpg', alt: 'Sessions Management' },
+    { src: '/Waygon/img/product-screenshots/app-chat.jpg', alt: 'Chat Interface' },
+    { src: '/Waygon/img/product-screenshots/app-profile.jpg', alt: 'Profile Customization' },
+    { src: '/Waygon/img/product-screenshots/app-settings.jpg', alt: 'Settings Screen' }
   ];
 
   useEffect(() => {
@@ -230,7 +230,7 @@ const RotatingiPhone = React.memo(() => {
                   )}
                 >
                   <div className={styles.placeholderContent}>
-                    <h3>{FeatureList[index]?.title || 'Wagon'}</h3>
+                    <h3>{FeatureList[index]?.title || 'Waygon'}</h3>
                     <p>{FeatureList[index]?.description.substring(0, 50) + '...' || 'Amazing features await!'}</p>
                   </div>
                 </div>
@@ -271,7 +271,7 @@ function HomepageFeatures(): JSX.Element {
       <div className={styles.featuresContainer}>
         <div className={styles.featuresLeft}>
           <div className={styles.featuresHeader}>
-            <h2 className={styles.featuresTitle}>Discover Wagon's Powerful Features</h2>
+            <h2 className={styles.featuresTitle}>Discover Waygon's Powerful Features</h2>
             <p className={styles.featuresSubtitle}>
               Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse facilisis, enim nec cursus dictum, risus urna dictum enim, nec cursus risus urna nec enim. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.
             </p>
@@ -302,7 +302,7 @@ function CallToAction(): JSX.Element {
   return (
     <section className={styles.cta} ref={ref}>
       <div className={clsx('container', styles.ctaContainer, { [styles.fadeIn]: isVisible })}>
-        <h2 className={styles.ctaTitle}>Wagon Alpha Preview</h2>
+        <h2 className={styles.ctaTitle}>Waygon Alpha Preview</h2>
         <p className={styles.ctaDescription}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse facilisis enim nec cursus dictum, risus urna dictum enim, nec cursus risus urna nec enim. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.
         </p>

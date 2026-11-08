@@ -27,7 +27,7 @@ const sidebars = {
     {
       type: 'link',
       label: 'Open Issues', // The link label
-      href: 'https://tree.taiga.io/project/ohjime-wagon/issues', // The external URL
+      href: 'https://tree.taiga.io/project/ohjime-waygon/issues', // The external URL
     },
   ],
 };

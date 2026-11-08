@@ -36,7 +36,7 @@ SECRET_KEY = os.environ.get(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# Production (the droplet's env/.env.prod) sets DEBUG=false.
+# Production (the droplet's env/.env) sets DEBUG=false.
 DEBUG = os.environ.get("DEBUG", "True").strip().lower() in ("1", "true", "yes", "on")
 
 ALLOWED_HOSTS = []

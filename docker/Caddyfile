@@ -1,4 +1,4 @@
-# Domain(s) come from the SITE_ADDRESS env var (set in env/.env.prod), so adding a
+# Domain(s) come from the SITE_ADDRESS env var (set in env/.env), so adding a
 # subdomain or moving to staging is just a config change — no edits to this file.
 # Caddy needs every served hostname listed explicitly to fetch its TLS cert, e.g.
 #   SITE_ADDRESS=waygon.dev, admin.waygon.dev

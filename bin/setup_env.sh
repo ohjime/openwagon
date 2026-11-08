@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Interactively build env/.env.prod for the docker-compose production stack.
+# Interactively build env/.env for the docker-compose production stack.
 # Mirrors cosound/bin/setup_env.sh, adapted to waygon (PostGIS, Google Maps,
 # AWS S3 + SES, Firebase). The generated file is git-ignored — never commit it.
 set -euo pipefail
 
-ENV_FILE="env/.env.prod"
+ENV_FILE="env/.env"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ fi
 mkdir -p env
 
 echo ""
-echo "=== waygon production environment setup (env/.env.prod) ==="
+echo "=== waygon production environment setup (env/.env) ==="
 echo "Press Enter to accept a [default]. Required fields cannot be left blank."
 echo ""
 

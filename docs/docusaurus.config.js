@@ -6,10 +6,10 @@ const darkCodeTheme = require('prism-react-renderer').themes.vsDark;
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'Wagon',
-  tagline: 'Wagon Developer Guide',
+  title: 'Waygon',
+  tagline: 'Waygon Developer Guide',
   url: 'https://ohjime.github.io',
-  baseUrl: '/wagon/',
+  baseUrl: '/waygon/',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
@@ -17,7 +17,7 @@ const config = {
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
   organizationName: 'ohjime', // Usually your GitHub org/user name.
-  projectName: 'wagon', // Usually your repo name.
+  projectName: 'waygon', // Usually your repo name.
   // Even if you don't use internalization, you can use this field to set useful
   // metadata like html lang. For example, if your site is Chinese, you may want
   // to replace "en" with "zh-Hans".
@@ -36,7 +36,7 @@ const config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/ohjime/wagon/tree/main/docs/',
+            'https://github.com/ohjime/waygon/tree/main/docs/',
           breadcrumbs: true,
           admonitions: true,
           showLastUpdateTime: true,
@@ -68,7 +68,7 @@ const config = {
         },
       },
       navbar: {
-        title: 'Wagon',
+        title: 'Waygon',
         logo: {
           alt: 'Logo',
           src: 'img/logo.png',
@@ -95,11 +95,11 @@ const config = {
           },
           {
             label: 'Backlog',
-            href: 'https://tree.taiga.io/project/ohjime-wagon/backlog',
+            href: 'https://tree.taiga.io/project/ohjime-waygon/backlog',
             position: 'right',
           },
           {
-            href: 'https://github.com/ohjime/wagon/',
+            href: 'https://github.com/ohjime/waygon/',
             position: 'right',
             className: 'navbar-github-icon',
             'aria-label': 'GitHub repository',
@@ -123,7 +123,7 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/ohjime/wagon/tree/main/',
+                href: 'https://github.com/ohjime/waygon/tree/main/',
               },
             ],
           },

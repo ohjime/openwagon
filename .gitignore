@@ -41,3 +41,4 @@ dist/
 build/
 **/dist/
 **/build/
+src/examples/**

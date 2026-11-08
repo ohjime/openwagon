@@ -32,7 +32,7 @@ htmx request — see the store registered in trips/pages/trips.html.
          the right of the clip boundary and slides into view during the
          animation — adding it never reflows the visible chips, because the gap
          is no longer redistributed by justify-between on every slide. -->
-    <div class="-mt-8 flex w-full flex-row items-center gap-2">
+    <div class="-mt-8 hidden w-full flex-row items-center gap-2 md:flex">
         {# djlint:off #}
         <button type="button"
                 @click="shiftWindow(-1)"
